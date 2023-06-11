@@ -1,0 +1,124 @@
+version 4
+
+gravity 0 -9.81 0
+
+// Segment representing the wheelchair (without wheel)
+segment Wheelchair
+    rt 0 0 0 xyz 0 0.35 0
+    translations x
+    ranges
+        -10 10
+    mass 89.64  // Mass of the wheelchair segment
+    inertia
+        0.0484311488 0 0
+        0 0.0484311488 0
+        0 0 0.0484311488
+    com 0.10537237661758142 0.31566042659527 0  // Center of mass position of the wheelchair segment
+endsegment
+
+
+segment Wheel
+    parent Wheelchair
+    rtinmatrix 0
+    rt 0 0 0 xyz 0 0 0
+    rotations z
+    ranges
+        -10*pi 10*pi
+    mass 3.79  // Mass of the wheel segment
+    inertia
+        0 0 0
+        0 0 0
+        0 0 0.16
+    com 0 0 0  // Center of mass position of the wheel segment
+    mesh 0 0 0 // do a square in xy plane
+    mesh 0.35 0 0
+    mesh 0.35 0.35 0
+    mesh -0.35 0.35 0
+    mesh -0.35 0 0
+    mesh -0.35 -0.35 0
+    mesh 0 -0.35 0
+    mesh 0.35 -0.35 0
+    mesh 0.35 0 0
+endsegment
+
+segment ContactFrame
+    parent Wheel
+    rtinmatrix 0
+    rt 0 0 0.2 xyz 0 0 0
+    mass 0
+    inertia
+        0 0 0
+        0 0 0
+        0 0 0
+    com 0 0 0  // Center of mass position of the wheel segment
+endsegment
+
+marker handrim_contact_point
+    parent ContactFrame
+    position 0 0.3 0
+endmarker
+
+contact handrim_contact_point
+    parent ContactFrame
+    position 0 0.3 0
+    axis yz
+endcontact
+
+
+// Segment representing the upper arm segment (shoulder to elbow)
+segment Arm
+    parent Wheelchair
+    rt 0 0 0 xyz 0 0.7710000000000001 0
+    rotations z
+    ranges
+        -10*pi 10*pi
+    mass 3.84  // Mass of the upper arm segment
+    inertia
+        0.030711263616000004 0 0
+        0 0.030711263616000004 0
+        0 0 0.030711263616000004
+    com  0.14910420000000002 0 0  // Center of mass position of the upper arm segment
+    mesh 0 0 0
+    mesh 0.271 0 0
+endsegment
+
+// Marker 0: Origin marker for Arm
+marker marker_0
+    parent Arm
+    position 0 0 0
+endmarker
+
+// Marker 1: End marker for Arm
+marker marker_1
+    parent Arm
+    position 0.271 0 0
+endmarker
+
+// Segment representing the forearm segment
+segment Forearm
+    parent Arm
+    rt 0 0 0 xyz 0.271 0 0
+    rotations z
+    ranges
+        -3*pi 3*pi
+    mass 3.68  // Mass of the forearm segment
+    inertia
+        0.04297025777218477 0 0
+        0 0.0002 0
+        0 0 0.04297025777218477
+    com 0.2100573304347826 0 0  // Center of mass position of the forearm segment
+    mesh 0 0 0
+    mesh 0.283 0 0
+endsegment
+
+// Marker 3: Origin marker for Forearm
+marker marker_3
+    parent Forearm
+    position 0 0 0
+endmarker
+
+// Marker 4: End marker for Forearm
+marker marker_4
+    parent Forearm
+    position 0.283 0 0
+endmarker

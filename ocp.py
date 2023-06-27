@@ -340,6 +340,9 @@ def prepare_ocp(
         axesToRemove=pos.axesToRemove(),
         id=segment_index(bio_model.model, parent_name),
     )
+    # set frame angle
+    bio_model.model.segments()[2].characteristics().setLength()
+
 
     constraint, constraint_jacobian, constraint_double_derivative = generate_rolling_joint_constraint(
         biorbd_model=bio_model,

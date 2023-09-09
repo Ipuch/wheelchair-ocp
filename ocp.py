@@ -22,8 +22,8 @@ from bioptim import (
     ObjectiveList,
     ConstraintList,
     ConstraintFcn,
-    Bounds,
-    InitialGuess,
+    BoundsList,
+    InitialGuessList,
     OdeSolver,
     OdeSolverBase,
     NonLinearProgram,
@@ -398,10 +398,13 @@ def prepare_ocp(
     mapping = BiMappingList()
     mapping.add("q", [0, None, 1, 2], [0, 2, 3])
     mapping.add("qdot", [0, None, 1, 2], [0, 2, 3])
-    x_bounds = bio_model.bounds_from_ranges(["q", "qdot"], mapping=mapping)
+    x_bounds = BoundsList()
+    x_bounds["q"] = bio_model.bounds_from_ranges(["q"], mapping=mapping)
+    x_bounds["qdot"] = bio_model.bounds_from_ranges(["qdot"], mapping=mapping)
 
     # Initial guess
-    x_init = InitialGuess(np.array([0, 0, 0, 0, 0, 0]))
+    x_init = InitialGuessList()
+    x_init.add(key="q", initial_guess=[0, 0, 0, 0, 0, 0])
 
     # Define control path constraint
     tau_min, tau_max, tau_init = -50, 50, 0
@@ -409,9 +412,11 @@ def prepare_ocp(
     variable_bimapping = BiMappingList()
 
     variable_bimapping.add("tau", to_second=[None, None, 0, 1], to_first=[2, 3])
-    u_bounds = Bounds([tau_min]*2, [tau_max]*2)
-    u_init = InitialGuess([tau_init] * 2)
+    u_bounds = BoundsList()
+    u_bounds.add("tau", min=[tau_min]*2, max=[tau_max]*2)
 
+    u_init = InitialGuessList()
+    u_init.add("tau", [tau_init]*2)
     # ------------- #
 
     return OptimalControlProgram(

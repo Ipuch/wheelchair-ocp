@@ -39,7 +39,7 @@ from bioptim import (
 from biorbd_casadi import marker_index, segment_index, NodeSegment, Vector3d
 import numpy as np
 
-from biorbd_model_holonomic import BiorbdModelCustomHolonomic
+from custom_biorbd_model_holonomic import BiorbdModelCustomHolonomic
 
 
 def prepare_ocp(

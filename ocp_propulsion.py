@@ -1,10 +1,6 @@
 """
-This example is a trivial box that must superimpose one of its corner to a marker at the beginning of the movement
-and superimpose the same corner to a different marker at the end.
-It is designed to show how one can define its own custom dynamics function if the provided ones are not
-sufficient.
-
-More specifically this example reproduces the behavior of the DynamicsFcn.TORQUE_DRIVEN using a custom dynamics
+# todo: not implemented at all, just a copy of the example
+It needs to be a example that simulates the pushing phase of a propulsion cycle of a wheelchair.
 """
 from casadi import MX, SX, vertcat, Function, jacobian, sqrt, atan2, sin, cos, horzcat
 from bioptim import (
@@ -165,7 +161,6 @@ def generate_close_loop_constraint_polar_coordinates(
         wheel_frame_index: int = None,
         handrim_radius: float = 0.35,
         contact_angle: float = None,
-        parameters: MX = MX(),
 ) -> tuple[Function, Function, Function]:
     """
     Generate a close loop constraint between two markers, in polar coordinates for the wheel.
@@ -228,7 +223,7 @@ def generate_close_loop_constraint_polar_coordinates(
 
     # the double derivative of the constraint
     constraint_double_derivative = (
-        constraint_jacobian_func(q_sym) @ q_ddot_sym + constraint_jacobian_func(q_dot_sym) @ q_dot_sym
+        constraint_jacobian_func(q_sym) @ q_ddot_sym + jacobian(constraint_jacobian_func(q_sym) @ q_dot_sym, q_sym) @ q_dot_sym
     )
 
     constraint_double_derivative_func = Function(
@@ -247,8 +242,6 @@ def generate_rolling_joint_constraint(
     translation_joint_index: int,
     rotation_joint_index: int,
     radius: float = 1,
-    parameters: MX = MX(),
-
 ) -> tuple[Function, Function, Function]:
     """Generate a rolling joint constraint between two joints"""
 
@@ -263,7 +256,7 @@ def generate_rolling_joint_constraint(
 
     constraint_func = Function(
         "rolling_joint_constraint",
-        [q_sym, parameters],
+        [q_sym],
         [constraint],
         ["q"],
         ["rolling_joint_constraint"],
@@ -271,51 +264,25 @@ def generate_rolling_joint_constraint(
 
     constraint_jacobian_func = Function(
         "rolling_joint_constraint_jacobian",
-        [q_sym, parameters],
+        [q_sym],
         [constraint_jacobian],
         ["q"],
         ["rolling_joint_constraint_jacobian"],
     ).expand()
 
     constraint_double_derivative = (
-        constraint_jacobian_func(q_sym) @ q_ddot_sym + constraint_jacobian_func(q_dot_sym) @ q_dot_sym
+        constraint_jacobian_func(q_sym) @ q_ddot_sym + jacobian(constraint_jacobian_func(q_sym) @ q_dot_sym, q_sym) @ q_dot_sym
     )
 
     constraint_double_derivative_func = Function(
         "rolling_joint_constraint_double_derivative",
-        [q_sym, q_dot_sym, q_ddot_sym, parameters],
+        [q_sym, q_dot_sym, q_ddot_sym],
         [constraint_double_derivative],
         ["q", "q_dot", "q_ddot"],
         ["rolling_joint_constraint_double_derivative"],
     ).expand()
 
     return constraint_func, constraint_jacobian_func, constraint_double_derivative_func
-
-
-def set_contact_point_rotation(bio_model: BiorbdModel, z_rotation_angle: MX):
-    """
-    Set the rotation of the contact point around the z axis
-
-    Parameters
-    ----------
-    bio_model: BiorbdModel
-        The model to modify by the parameters
-    z_rotation_angle: MX
-        The angle of rotation around the z axis
-    """
-    segments = bio_model.model.segments()
-    handrim_segment = segments[2]
-
-    rototranslation_matrix = handrim_segment.characteristics().LocalJCS().to_mx()
-
-    rot_z_matrix = vertcat(
-        horzcat(cos(z_rotation_angle), -sin(z_rotation_angle), 0),
-        horzcat(sin(z_rotation_angle), cos(z_rotation_angle), 0),
-        horzcat(0, 0, 1),
-    )
-    rototranslation_matrix[:3, :3] = rot_z_matrix
-
-    handrim_segment.characteristics().setLocalJCS(bio_model, rototranslation_matrix)
 
 
 def prepare_ocp(
@@ -349,7 +316,6 @@ def prepare_ocp(
         translation_joint_index=0,
         rotation_joint_index=1,
         radius=0.35,
-        parameters=contact_angle,
     )
     bio_model.add_holonomic_constraint(
         constraint=constraint,

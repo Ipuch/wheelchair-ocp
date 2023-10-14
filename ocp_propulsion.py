@@ -2,19 +2,16 @@
 # todo: not implemented at all, just a copy of the example
 It needs to be a example that simulates the pushing phase of a propulsion cycle of a wheelchair.
 """
-from casadi import MX, SX, vertcat, Function, jacobian, sqrt, atan2, sin, cos, horzcat
+from casadi import MX, SX, vertcat, Function, jacobian, sqrt, atan2
 from bioptim import (
-    Node,
     OptimalControlProgram,
     DynamicsList,
     ConfigureProblem,
-    DynamicsFcn,
     DynamicsFunctions,
     ParameterList,
     ObjectiveFcn,
     ObjectiveList,
     ConstraintList,
-    ConstraintFcn,
     BoundsList,
     InitialGuessList,
     OdeSolver,
@@ -22,11 +19,9 @@ from bioptim import (
     NonLinearProgram,
     Solver,
     DynamicsEvaluation,
-    BiMapping,
     BiMappingList,
-    SelectionMapping,
-    Dependency,
-    BiorbdModel,
+    PhaseDynamics,
+    HolonomicConstraintsList,
 )
 from biorbd_casadi import marker_index, segment_index, NodeSegment, Vector3d
 import numpy as np
@@ -35,9 +30,11 @@ from custom_biorbd_model_holonomic import BiorbdModelCustomHolonomic
 
 
 def custom_dynamic(
+    time: MX | SX,
     states: MX | SX,
     controls: MX | SX,
     parameters: MX | SX,
+    stochastic_variables: MX | SX,
     nlp: NonLinearProgram,
 ) -> DynamicsEvaluation:
     """
@@ -95,7 +92,7 @@ def custom_configure(ocp: OptimalControlProgram, nlp: NonLinearProgram):
     )
 
     ConfigureProblem.configure_tau(ocp, nlp, as_states=False, as_controls=True)
-    ConfigureProblem.configure_dynamics_function(ocp, nlp, custom_dynamic, expand=False)
+    ConfigureProblem.configure_dynamics_function(ocp, nlp, custom_dynamic)
 
 
 def generate_close_loop_constraint(
@@ -311,40 +308,44 @@ def prepare_ocp(
     # BioModel path
     bio_model = BiorbdModelCustomHolonomic(biorbd_model_path)
 
-    constraint, constraint_jacobian, constraint_double_derivative = generate_rolling_joint_constraint(
+    holonomic_constraints = HolonomicConstraintsList()
+    holonomic_constraints.add(
+        key="rolling_joint_constraint",
+        constraints_fcn=generate_rolling_joint_constraint,
         biorbd_model=bio_model,
         translation_joint_index=0,
         rotation_joint_index=1,
         radius=0.35,
     )
-    bio_model.add_holonomic_constraint(
-        constraint=constraint,
-        constraint_jacobian=constraint_jacobian,
-        constraint_double_derivative=constraint_double_derivative,
-    )
-    constraint, constraint_jacobian, constraint_double_derivative = generate_close_loop_constraint(
-        biorbd_model=bio_model,
-        marker_1="marker_4",
-        marker_2="handrim_contact",
-        local_frame_index=0,
-        parameters=contact_angle,
-    )
+
+    bio_model.set_holonomic_configuration(constraints_list=holonomic_constraints,
+                                          independent_joint_index=[0, 2, 3],
+                                          dependent_joint_index=[1]
+                                          )
+
+    # constraint, constraint_jacobian, constraint_double_derivative = generate_close_loop_constraint(
+    #     biorbd_model=bio_model,
+    #     marker_1="marker_4",
+    #     marker_2="handrim_contact",
+    #     local_frame_index=0,
+    #     parameters=contact_angle,
+    # )
 
     parameters = ParameterList()
 
-    def set_contact_angle(biomodel: BiorbdModelCustomHolonomic, contact_angle: MX):
-        """Set the contact angle of the wheel"""
-        biomodel.add_extra_parameter("contact_angle", contact_angle)
+    # def set_contact_angle(biomodel: BiorbdModelCustomHolonomic, contact_angle: MX):
+    #     """Set the contact angle of the wheel"""
+    #     biomodel.add_extra_parameter("contact_angle", contact_angle)
+    #
+    # parameters.add(
+    #     parameter_name="contact_angle",  # the polar angle of the contact point in the wheel frame
+    #     function=set_contact_angle,
+    #     initial_guess=InitialGuess(0),
+    #     bounds=Bounds(-2*np.pi, 2*np.pi),
+    #     size=1,
+    # )
 
-    parameters.add(
-        parameter_name="contact_angle",  # the polar angle of the contact point in the wheel frame
-        function=set_contact_angle,
-        initial_guess=InitialGuess(0),
-        bounds=Bounds(-2*np.pi, 2*np.pi),
-        size=1,
-    )
-
-    bio_model.set_dependencies(independent_joint_index=[0, 2, 3], dependent_joint_index=[1])
+    # bio_model.set_dependencies(independent_joint_index=[0, 2, 3], dependent_joint_index=[1])
 
     final_time = 0.5
 
@@ -355,18 +356,18 @@ def prepare_ocp(
 
     # Dynamics
     dynamics = DynamicsList()
-    dynamics.add(custom_configure, dynamic_function=custom_dynamic, expand=False)
+    dynamics.add(custom_configure, dynamic_function=custom_dynamic, phase_dynamics=PhaseDynamics.SHARED_DURING_THE_PHASE)
 
     # Path Constraints
     constraints = ConstraintList()
 
     # Boundaries
     mapping = BiMappingList()
-    mapping.add("q", [0, None, 1, 2], [0, 2, 3])
-    mapping.add("qdot", [0, None, 1, 2], [0, 2, 3])
+    mapping.add("q", to_second=[0, None, 1, 2], to_first=[0, 2, 3])
+    mapping.add("qdot", to_second=[0, None, 1, 2], to_first=[0, 2, 3])
     x_bounds = BoundsList()
-    x_bounds["q"] = bio_model.bounds_from_ranges(["q"], mapping=mapping)
-    x_bounds["qdot"] = bio_model.bounds_from_ranges(["qdot"], mapping=mapping)
+    x_bounds["q"] = bio_model.bounds_from_ranges("q", mapping=mapping)
+    x_bounds["qdot"] = bio_model.bounds_from_ranges("qdot", mapping=mapping)
 
     # Initial guess
     x_init = InitialGuessList()
@@ -387,18 +388,17 @@ def prepare_ocp(
 
     return OptimalControlProgram(
         bio_model,
-        dynamics,
-        n_shooting,
-        final_time,
-        x_init,
-        u_init,
-        x_bounds,
-        u_bounds,
-        objective_functions,
-        constraints,
+        dynamics=dynamics,
+        n_shooting=n_shooting,
+        phase_time=final_time,
+        x_init=x_init,
+        u_init=u_init,
+        x_bounds=x_bounds,
+        u_bounds=u_bounds,
+        objective_functions=objective_functions,
+        constraints=constraints,
         ode_solver=ode_solver,
         use_sx=False,
-        assume_phase_dynamics=True,
         variable_mappings=variable_bimapping,
         parameters=parameters,
         n_threads=8,

@@ -8,17 +8,14 @@ More specifically this example reproduces the behavior of the DynamicsFcn.TORQUE
 """
 from casadi import MX, SX, vertcat, Function, jacobian, sqrt, atan2, sin, cos, horzcat
 from bioptim import (
-    Node,
     OptimalControlProgram,
     DynamicsList,
     ConfigureProblem,
-    DynamicsFcn,
     DynamicsFunctions,
     ParameterList,
     ObjectiveFcn,
     ObjectiveList,
     ConstraintList,
-    ConstraintFcn,
     BoundsList,
     InitialGuessList,
     OdeSolver,
@@ -26,19 +23,18 @@ from bioptim import (
     NonLinearProgram,
     Solver,
     DynamicsEvaluation,
-    BiMapping,
     BiMappingList,
-    SelectionMapping,
-    Dependency,
     BiorbdModel,
+    PhaseDynamics,
 )
-from biorbd_casadi import marker_index, segment_index, NodeSegment, Vector3d
+from biorbd_casadi import marker_index
 import numpy as np
 
 from custom_biorbd_model_holonomic import BiorbdModelCustomHolonomic
 
 
 def custom_dynamic(
+    time: MX,
     states: MX | SX,
     controls: MX | SX,
     parameters: MX | SX,
@@ -389,7 +385,7 @@ def prepare_ocp(
 
     # Dynamics
     dynamics = DynamicsList()
-    dynamics.add(custom_configure, dynamic_function=custom_dynamic, expand=False)
+    dynamics.add(custom_configure, dynamic_function=custom_dynamic, expand=False, phase_dynamics=PhaseDynamics.SHARED_DURING_THE_PHASE)
 
     # Path Constraints
     constraints = ConstraintList()
@@ -432,7 +428,6 @@ def prepare_ocp(
         constraints,
         ode_solver=ode_solver,
         use_sx=False,
-        assume_phase_dynamics=True,
         variable_mappings=variable_bimapping,
         parameters=parameters,
         n_threads=8,

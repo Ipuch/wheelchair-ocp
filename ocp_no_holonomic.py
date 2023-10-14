@@ -35,6 +35,7 @@ from bioptim import (
     Dependency,
     BiorbdModel,
     InterpolationType,
+    PhaseDynamics,
 )
 from biorbd_casadi import marker_index, segment_index, NodeSegment, Vector3d
 import numpy as np
@@ -77,7 +78,7 @@ def prepare_ocp(
 
     # Dynamics
     dynamics = DynamicsList()
-    dynamics.add(DynamicsFcn.TORQUE_DRIVEN)
+    dynamics.add(DynamicsFcn.TORQUE_DRIVEN, phase_dynamics=PhaseDynamics.SHARED_DURING_THE_PHASE)
 
     # Path Constraints
     constraints = ConstraintList()
@@ -88,6 +89,15 @@ def prepare_ocp(
     # mapping.add("qdot", [0, None, 1, 2], [0, 2, 3])
     x_bounds = BoundsList()
     x_bounds["q"] = bio_model.bounds_from_ranges("q")
+
+    # make the wheelchair move in a straight line
+    start = 0
+    end = 0.5
+    x_bounds["q"].min[0, 0] = start
+    x_bounds["q"].max[0, 0] = start
+    x_bounds["q"].min[0, -1] = end
+    x_bounds["q"].max[0, -1] = end
+
     x_bounds["qdot"] = bio_model.bounds_from_ranges("qdot")
 
     # Initial guess
@@ -120,7 +130,6 @@ def prepare_ocp(
         constraints=constraints,
         ode_solver=ode_solver,
         use_sx=False,
-        assume_phase_dynamics=True,
         variable_mappings=variable_bimapping,
         n_threads=1,
     ) , bio_model

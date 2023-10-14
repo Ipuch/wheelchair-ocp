@@ -22,6 +22,8 @@ from bioptim import (
     BiMappingList,
     PhaseDynamics,
     HolonomicConstraintsList,
+    HolonomicBiorbdModel,
+    CostType,
 )
 from biorbd_casadi import marker_index, segment_index, NodeSegment, Vector3d
 import numpy as np
@@ -95,145 +97,6 @@ def custom_configure(ocp: OptimalControlProgram, nlp: NonLinearProgram):
     ConfigureProblem.configure_dynamics_function(ocp, nlp, custom_dynamic)
 
 
-def generate_close_loop_constraint(
-    biorbd_model, marker_1: str, marker_2: str, index: slice = slice(0, 3), local_frame_index: int = None, parameters: MX = MX(),
-) -> tuple[Function, Function, Function]:
-    """Generate a close loop constraint between two markers"""
-
-    # symbolic variables to create the functions
-    q_sym = MX.sym("q", biorbd_model.nb_q, 1)
-    q_dot_sym = MX.sym("q_dot", biorbd_model.nb_qdot, 1)
-    q_ddot_sym = MX.sym("q_ddot", biorbd_model.nb_qdot, 1)
-
-    # symbolic markers in global frame
-    marker_1_sym = biorbd_model.marker(q_sym, index=marker_index(biorbd_model.model, marker_1))
-    marker_2_sym = biorbd_model.marker(q_sym, index=marker_index(biorbd_model.model, marker_2))
-
-    # if local frame is provided, the markers are expressed in the same local frame
-    if local_frame_index is not None:
-        jcs_t = biorbd_model.homogeneous_matrices_in_global(q_sym, local_frame_index, inverse=True)
-        marker_1_sym = (jcs_t.to_mx() @ vertcat(marker_1_sym, 1))[:3]
-        marker_2_sym = (jcs_t.to_mx() @ vertcat(marker_2_sym, 1))[:3]
-
-    # the constraint is the distance between the two markers, set to zero
-    constraint = (marker_1_sym - marker_2_sym)[index]
-    # the jacobian of the constraint
-    constraint_jacobian = jacobian(constraint, q_sym)
-
-    constraint_func = Function(
-        "holonomic_constraint",
-        [q_sym, parameters],
-        [constraint],
-        ["q"],
-        ["holonomic_constraint"],
-    ).expand()
-
-    constraint_jacobian_func = Function(
-        "holonomic_constraint_jacobian",
-        [q_sym, parameters],
-        [constraint_jacobian],
-        ["q"],
-        ["holonomic_constraint_jacobian"],
-    ).expand()
-
-    # the double derivative of the constraint
-    constraint_double_derivative = (
-        constraint_jacobian_func(q_sym) @ q_ddot_sym + constraint_jacobian_func(q_dot_sym) @ q_dot_sym
-    )
-
-    constraint_double_derivative_func = Function(
-        "holonomic_constraint_double_derivative",
-        [q_sym, q_dot_sym, q_ddot_sym, parameters],
-        [constraint_double_derivative],
-        ["q", "q_dot", "q_ddot"],
-        ["holonomic_constraint_double_derivative"],
-    ).expand()
-
-    return constraint_func, constraint_jacobian_func, constraint_double_derivative_func
-
-
-def generate_close_loop_constraint_polar_coordinates(
-        biorbd_model: BiorbdModelCustomHolonomic,
-        marker_1: str,
-        wheel_frame_index: int = None,
-        handrim_radius: float = 0.35,
-        contact_angle: float = None,
-) -> tuple[Function, Function, Function]:
-    """
-    Generate a close loop constraint between two markers, in polar coordinates for the wheel.
-    In order to get lagrange multipliers as radial and tangential forces applied on the wheel.
-    assumed in x-y plane
-
-    Parameters
-    ----------
-    biorbd_model: BiorbdModelCustomHolonomic
-        The biorbd model
-    marker_1: str
-        The name of the marker to constraint
-    wheel_frame_index: int
-        The index of the wheel frame
-    handrim_radius: float
-        The radius of the handrim
-    contact_angle: float
-        polar angle of the contact point on the wheel, in radian need to be symbolic to be able to find the best location.
-    **extra_params, optional
-        Extra parameters to pass to the constraint function
-    """
-
-    # symbolic variables to create the functions
-    q_sym = MX.sym("q", biorbd_model.nb_q, 1)
-    q_dot_sym = MX.sym("q_dot", biorbd_model.nb_qdot, 1)
-    q_ddot_sym = MX.sym("q_ddot", biorbd_model.nb_qdot, 1)
-
-    # symbolic markers in global frame
-    marker_1_sym = biorbd_model.marker(q_sym, index=marker_index(biorbd_model.model, marker_1))
-
-    # if local frame is provided, the markers are expressed in the same local frame
-    if wheel_frame_index is not None:
-        jcs_t = biorbd_model.homogeneous_matrices_in_global(q_sym, wheel_frame_index, inverse=True)
-        marker_1_sym = (jcs_t.to_mx() @ vertcat(marker_1_sym, 1))[:3]
-
-    # express in polar coordinates
-    radial_constraint = sqrt((marker_1_sym[0]) ** 2 + (marker_1_sym[1]) ** 2) - handrim_radius
-    tangential_constraint = atan2(marker_1_sym[1], marker_1_sym[0]) - contact_angle
-
-    # the constraint
-    constraint = vertcat(radial_constraint, tangential_constraint)
-    # the jacobian of the constraint
-    constraint_jacobian = jacobian(constraint, q_sym)
-
-    constraint_func = Function(
-        "holonomic_constraint",
-        [q_sym, parameters],
-        [constraint],
-        ["q"],
-        ["holonomic_constraint"],
-    ).expand()
-
-    constraint_jacobian_func = Function(
-        "holonomic_constraint_jacobian",
-        [q_sym, parameters],
-        [constraint_jacobian],
-        ["q"],
-        ["holonomic_constraint_jacobian"],
-    ).expand()
-
-    # the double derivative of the constraint
-    constraint_double_derivative = (
-        constraint_jacobian_func(q_sym) @ q_ddot_sym + jacobian(constraint_jacobian_func(q_sym) @ q_dot_sym, q_sym) @ q_dot_sym
-    )
-
-    constraint_double_derivative_func = Function(
-        "holonomic_constraint_double_derivative",
-        [q_sym, q_dot_sym, q_ddot_sym, parameters],
-        [constraint_double_derivative],
-        ["q", "q_dot", "q_ddot"],
-        ["holonomic_constraint_double_derivative"],
-    ).expand()
-
-    return constraint_func, constraint_jacobian_func, constraint_double_derivative_func
-
-
 def generate_rolling_joint_constraint(
     biorbd_model: BiorbdModelCustomHolonomic,
     translation_joint_index: int,
@@ -247,7 +110,7 @@ def generate_rolling_joint_constraint(
     q_dot_sym = MX.sym("q_dot", biorbd_model.nb_qdot, 1)
     q_ddot_sym = MX.sym("q_ddot", biorbd_model.nb_qdot, 1)
 
-    constraint = q_sym[translation_joint_index] + radius * q_sym[rotation_joint_index]
+    constraint = q_sym[translation_joint_index] - radius * q_sym[rotation_joint_index]
 
     constraint_jacobian = jacobian(constraint, q_sym)
 
@@ -306,7 +169,7 @@ def prepare_ocp(
 
     # --- Options --- #
     # BioModel path
-    bio_model = BiorbdModelCustomHolonomic(biorbd_model_path)
+    bio_model = HolonomicBiorbdModel(biorbd_model_path)
 
     holonomic_constraints = HolonomicConstraintsList()
     holonomic_constraints.add(
@@ -352,7 +215,7 @@ def prepare_ocp(
     # Add objective functions
     objective_functions = ObjectiveList()
     objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="tau", weight=100, multi_thread=False)
-    objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=0.5, max_bound=0.6)
+    # objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=0.5, max_bound=0.6)
 
     # Dynamics
     dynamics = DynamicsList()
@@ -369,6 +232,14 @@ def prepare_ocp(
     x_bounds["q"] = bio_model.bounds_from_ranges("q", mapping=mapping)
     x_bounds["qdot"] = bio_model.bounds_from_ranges("qdot", mapping=mapping)
 
+    # make the wheelchair move in a straight line
+    start = 0
+    end = 1
+    x_bounds["q"].min[0, 0] = start
+    x_bounds["q"].max[0, 0] = start
+    x_bounds["q"].min[0, -1] = end
+    x_bounds["q"].max[0, -1] = end
+
     # Initial guess
     x_init = InitialGuessList()
     x_init.add(key="q", initial_guess=[0, 0, 0, 0, 0, 0])
@@ -378,12 +249,12 @@ def prepare_ocp(
 
     variable_bimapping = BiMappingList()
 
-    variable_bimapping.add("tau", to_second=[None, None, 0, 1], to_first=[2, 3])
+    # variable_bimapping.add("tau", to_second=[None, None, 1, 2], to_first=[2, 3])
     u_bounds = BoundsList()
-    u_bounds.add("tau", min=[tau_min]*2, max=[tau_max]*2)
+    u_bounds.add("tau", min_bound=[tau_min]*4, max_bound=[tau_max]*4)
 
     u_init = InitialGuessList()
-    u_init.add("tau", [tau_init]*2)
+    u_init.add("tau", initial_guess=[tau_init]*4)
     # ------------- #
 
     return OptimalControlProgram(
@@ -413,17 +284,22 @@ def main():
     model_path = "wheelchair_model.bioMod"
     n_shooting = 50
     ocp, bio_model = prepare_ocp(biorbd_model_path=model_path, n_shooting=n_shooting)
-
+    ocp.add_plot_penalty(CostType.ALL)
     # --- Solve the program --- #
-    sol = ocp.solve(Solver.IPOPT(show_online_optim=False, _max_iter=500))
+    sol = ocp.solve(Solver.IPOPT(show_online_optim=False, show_options=dict(show_bounds=True), _max_iter=500))
 
+    sol.graphs()
     # --- Show results --- #
     # sol.animate()
     q = np.zeros((4, n_shooting + 1))
     for i, ui in enumerate(sol.states["u"].T):
-        vi = bio_model.compute_v_from_u_numeric(ui, v_init=np.zeros(2)).toarray()
-        qi = bio_model.q_from_u_and_v(ui[:, np.newaxis], vi).toarray().squeeze()
-        q[:, i] = qi
+        qi = bio_model.compute_q(ui, q_v_init=np.zeros(1)).toarray()
+        print(qi[0])
+        q[:, i] = qi.squeeze()
+
+    # q idx 1 stay between 0 and 2pi
+    # q[0, :] = 0
+    q[1, :] = np.mod(q[1, :], 2 * np.pi)
 
     import bioviz
     viz = bioviz.Viz(model_path)

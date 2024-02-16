@@ -2,7 +2,7 @@
 This file is the custom model got from Anais Farr's work that implement explicit holonomic constraints
 We need to adapt it to include rolling constraints and our close-loop constraint.
 
-NOTE: Bioptim implentation might have change a bit since the creation of this file, so we might need an extra effort to
+NOTE: Bioptim implentation might have changed a bit since the creation of this file, so we might need an extra effort to
 adapt it to the current version of bioptim
 '''
 
@@ -155,7 +155,7 @@ class BiorbdModelCustomHolonomic(HolonomicBiorbdModel):
         xp = -marker_knee_in_arm[2]
         yp = marker_knee_in_arm[1]
 
-        # Find position dependente joint
+        # Find position dependent joint
         theta = self.inverse_kinematics_2d(
             l1=l1,
             l2=l2,
@@ -248,8 +248,12 @@ class BiorbdModelCustomHolonomic(HolonomicBiorbdModel):
 
     def compute_q(self, q_u: MX, q_v_init: MX = None) -> MX:
         """
+        EXPLICIT
+
         Compute the dependent joint from the independent joint
         and integrates them into the variable q
+
+        The major change here is that we explicitly compute q_v from q_u
 
         Parameters
         ----------
@@ -261,5 +265,5 @@ class BiorbdModelCustomHolonomic(HolonomicBiorbdModel):
         q: states of the dependent and independent joint
 
         """
-        q_v = self.compute_v_from_u_explicit_symbolic(q_u)
+        q_v = self.compute_v_from_u_explicit_symbolic(q_u)  # THIS FUNCTION NEED TO BE CHANGED TO OUR APPLICATION !
         return self.state_from_partition(q_u, q_v)

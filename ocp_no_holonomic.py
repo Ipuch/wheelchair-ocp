@@ -1,52 +1,34 @@
 """
-This example is a trivial box that must superimpose one of its corner to a marker at the beginning of the movement
-and superimpose the same corner to a different marker at the end.
-It is designed to show how one can define its own custom dynamics function if the provided ones are not
-sufficient.
-
-More specifically this example reproduces the behavior of the DynamicsFcn.TORQUE_DRIVEN using a custom dynamics
+The simplest example of a wheelchair moving in a straight line with no holonomic constraints
+i.e. no rolling, no closed-loop on the handrim.
 """
 
-import platform
+import numpy as np
 
-from casadi import MX, SX, vertcat, Function, jacobian, sqrt, atan2, sin, cos
 from bioptim import (
-    Node,
     OptimalControlProgram,
     DynamicsList,
-    ConfigureProblem,
     DynamicsFcn,
-    DynamicsFunctions,
-    ParameterList,
     ObjectiveFcn,
     ObjectiveList,
     ConstraintList,
-    ConstraintFcn,
     BoundsList,
     InitialGuessList,
     OdeSolver,
     OdeSolverBase,
-    NonLinearProgram,
     Solver,
-    DynamicsEvaluation,
-    BiMapping,
     BiMappingList,
-    SelectionMapping,
-    Dependency,
     BiorbdModel,
     InterpolationType,
     PhaseDynamics,
+    SolutionMerge,
 )
-from biorbd_casadi import marker_index, segment_index, NodeSegment, Vector3d
-import numpy as np
-
-from custom_biorbd_model_holonomic import BiorbdModelCustomHolonomic
 
 
 def prepare_ocp(
-    biorbd_model_path: str,
-    ode_solver: OdeSolverBase = OdeSolver.RK4(),
-    n_shooting=50,
+        biorbd_model_path: str,
+        ode_solver: OdeSolverBase = OdeSolver.RK4(),
+        n_shooting=50,
 ) -> OptimalControlProgram:
     """
     Prepare the program
@@ -102,8 +84,8 @@ def prepare_ocp(
 
     # Initial guess
     x_init = InitialGuessList()
-    x_init.add(key="q", initial_guess=np.zeros((bio_model.nb_q, )), interpolation=InterpolationType.CONSTANT)
-    x_init.add(key="qdot", initial_guess=np.zeros((bio_model.nb_qdot, )), interpolation=InterpolationType.CONSTANT)
+    x_init.add(key="q", initial_guess=np.zeros((bio_model.nb_q,)), interpolation=InterpolationType.CONSTANT)
+    x_init.add(key="qdot", initial_guess=np.zeros((bio_model.nb_qdot,)), interpolation=InterpolationType.CONSTANT)
 
     # Define control path constraint
     tau_min, tau_max, tau_init = -50, 50, 0
@@ -111,10 +93,10 @@ def prepare_ocp(
     variable_bimapping = BiMappingList()
     variable_bimapping.add("tau", to_second=[None, None, 0, 1], to_first=[2, 3])
     u_bounds = BoundsList()
-    u_bounds.add("tau", min_bound=[tau_min]*2, max_bound=[tau_max]*2)
+    u_bounds.add("tau", min_bound=[tau_min] * 2, max_bound=[tau_max] * 2)
 
     u_init = InitialGuessList()
-    u_init.add("tau", [tau_init]*2)
+    u_init.add("tau", [tau_init] * 2)
     # ------------- #
 
     return OptimalControlProgram(
@@ -132,7 +114,7 @@ def prepare_ocp(
         use_sx=False,
         variable_mappings=variable_bimapping,
         n_threads=1,
-    ) , bio_model
+    ), bio_model
 
 
 def main():
@@ -151,7 +133,7 @@ def main():
     # # sol.animate()
     import bioviz
     viz = bioviz.Viz(model_path)
-    viz.load_movement(sol.states["q"])
+    viz.load_movement(sol.decision_states(to_merge=SolutionMerge.NODES)["q"])
     viz.exec()
 
 

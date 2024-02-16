@@ -1,12 +1,10 @@
 """
-This example is a trivial box that must superimpose one of its corner to a marker at the beginning of the movement
-and superimpose the same corner to a different marker at the end.
-It is designed to show how one can define its own custom dynamics function if the provided ones are not
-sufficient.
-
-More specifically this example reproduces the behavior of the DynamicsFcn.TORQUE_DRIVEN using a custom dynamics
+Not finished at all this is a prototype of the whole example.
 """
+import numpy as np
+from biorbd_casadi import marker_index
 from casadi import MX, SX, vertcat, Function, jacobian, sqrt, atan2, sin, cos, horzcat
+
 from bioptim import (
     OptimalControlProgram,
     DynamicsList,
@@ -27,18 +25,15 @@ from bioptim import (
     BiorbdModel,
     PhaseDynamics,
 )
-from biorbd_casadi import marker_index
-import numpy as np
-
 from custom_biorbd_model_holonomic import BiorbdModelCustomHolonomic
 
 
 def custom_dynamic(
-    time: MX,
-    states: MX | SX,
-    controls: MX | SX,
-    parameters: MX | SX,
-    nlp: NonLinearProgram,
+        time: MX,
+        states: MX | SX,
+        controls: MX | SX,
+        parameters: MX | SX,
+        nlp: NonLinearProgram,
 ) -> DynamicsEvaluation:
     """
     The custom dynamics function that provides the derivative of the states: dxdt = f(x, u, p)
@@ -99,7 +94,8 @@ def custom_configure(ocp: OptimalControlProgram, nlp: NonLinearProgram):
 
 
 def generate_close_loop_constraint(
-    biorbd_model, marker_1: str, marker_2: str, index: slice = slice(0, 3), local_frame_index: int = None, parameters: MX = MX(),
+        biorbd_model, marker_1: str, marker_2: str, index: slice = slice(0, 3), local_frame_index: int = None,
+        parameters: MX = MX(),
 ) -> tuple[Function, Function, Function]:
     """Generate a close loop constraint between two markers"""
 
@@ -141,7 +137,7 @@ def generate_close_loop_constraint(
 
     # the double derivative of the constraint
     constraint_double_derivative = (
-        constraint_jacobian_func(q_sym) @ q_ddot_sym + constraint_jacobian_func(q_dot_sym) @ q_dot_sym
+            constraint_jacobian_func(q_sym) @ q_ddot_sym + constraint_jacobian_func(q_dot_sym) @ q_dot_sym
     )
 
     constraint_double_derivative_func = Function(
@@ -224,7 +220,7 @@ def generate_close_loop_constraint_polar_coordinates(
 
     # the double derivative of the constraint
     constraint_double_derivative = (
-        constraint_jacobian_func(q_sym) @ q_ddot_sym + constraint_jacobian_func(q_dot_sym) @ q_dot_sym
+            constraint_jacobian_func(q_sym) @ q_ddot_sym + constraint_jacobian_func(q_dot_sym) @ q_dot_sym
     )
 
     constraint_double_derivative_func = Function(
@@ -239,11 +235,11 @@ def generate_close_loop_constraint_polar_coordinates(
 
 
 def generate_rolling_joint_constraint(
-    biorbd_model: BiorbdModelCustomHolonomic,
-    translation_joint_index: int,
-    rotation_joint_index: int,
-    radius: float = 1,
-    parameters: MX = MX(),
+        biorbd_model: BiorbdModelCustomHolonomic,
+        translation_joint_index: int,
+        rotation_joint_index: int,
+        radius: float = 1,
+        parameters: MX = MX(),
 
 ) -> tuple[Function, Function, Function]:
     """Generate a rolling joint constraint between two joints"""
@@ -274,7 +270,7 @@ def generate_rolling_joint_constraint(
     ).expand()
 
     constraint_double_derivative = (
-        constraint_jacobian_func(q_sym) @ q_ddot_sym + constraint_jacobian_func(q_dot_sym) @ q_dot_sym
+            constraint_jacobian_func(q_sym) @ q_ddot_sym + constraint_jacobian_func(q_dot_sym) @ q_dot_sym
     )
 
     constraint_double_derivative_func = Function(
@@ -315,9 +311,9 @@ def set_contact_point_rotation(bio_model: BiorbdModel, z_rotation_angle: MX):
 
 
 def prepare_ocp(
-    biorbd_model_path: str,
-    ode_solver: OdeSolverBase = OdeSolver.RK4(),
-    n_shooting=50,
+        biorbd_model_path: str,
+        ode_solver: OdeSolverBase = OdeSolver.RK4(),
+        n_shooting=50,
 ) -> OptimalControlProgram:
     """
     Prepare the program
@@ -370,7 +366,7 @@ def prepare_ocp(
         parameter_name="contact_angle",  # the polar angle of the contact point in the wheel frame
         function=set_contact_angle,
         initial_guess=InitialGuess(0),
-        bounds=Bounds(-2*np.pi, 2*np.pi),
+        bounds=Bounds(-2 * np.pi, 2 * np.pi),
         size=1,
     )
 
@@ -385,7 +381,8 @@ def prepare_ocp(
 
     # Dynamics
     dynamics = DynamicsList()
-    dynamics.add(custom_configure, dynamic_function=custom_dynamic, expand=False, phase_dynamics=PhaseDynamics.SHARED_DURING_THE_PHASE)
+    dynamics.add(custom_configure, dynamic_function=custom_dynamic, expand=False,
+                 phase_dynamics=PhaseDynamics.SHARED_DURING_THE_PHASE)
 
     # Path Constraints
     constraints = ConstraintList()
@@ -409,10 +406,10 @@ def prepare_ocp(
 
     variable_bimapping.add("tau", to_second=[None, None, 0, 1], to_first=[2, 3])
     u_bounds = BoundsList()
-    u_bounds.add("tau", min=[tau_min]*2, max=[tau_max]*2)
+    u_bounds.add("tau", min=[tau_min] * 2, max=[tau_max] * 2)
 
     u_init = InitialGuessList()
-    u_init.add("tau", [tau_init]*2)
+    u_init.add("tau", [tau_init] * 2)
     # ------------- #
 
     return OptimalControlProgram(
@@ -431,7 +428,7 @@ def prepare_ocp(
         variable_mappings=variable_bimapping,
         parameters=parameters,
         n_threads=8,
-    ) , bio_model
+    ), bio_model
 
 
 def main():

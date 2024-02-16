@@ -1,4 +1,7 @@
-# DEFINITION DU BRAS 2D
+"""
+Here is the code that helped me to define the parameters of the model.
+Including the wheelchair and the subject.
+"""
 
 # toutes les unités sont en S.I. (mètres)
 
@@ -49,9 +52,10 @@ I_Hand = (0.56 * length_hand) ** 2 * m_hand  # kg.m2  # (selon Dumas et al.,2007
 p['m2'] = m_forearm + m_hand
 p['l2'] = length_forearm + length_hand  # m
 p['c2'] = (m_forearm * length_forearm * 0.5726 +
-           m_hand * (length_forearm + length_hand * 0.6309)) / (m_forearm + m_hand)  # position centre de masse segment 2 en m
-p['I2'] = I_Forearm + m_forearm * (p['c2'] - length_forearm * 0.572 ) ** 2 \
-          + I_Hand + m_hand  * (p['c2']- (length_forearm + length_hand*0.6309) ) ** 2
+           m_hand * (length_forearm + length_hand * 0.6309)) / (
+                      m_forearm + m_hand)  # position centre de masse segment 2 en m
+p['I2'] = I_Forearm + m_forearm * (p['c2'] - length_forearm * 0.572) ** 2 \
+          + I_Hand + m_hand * (p['c2'] - (length_forearm + length_hand * 0.6309)) ** 2
 
 # Defintion Roue (wheel)
 # FRET 1

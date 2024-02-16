@@ -1,14 +1,14 @@
 """
-# todo: not implemented at all, just a copy of the example
-It needs to be a example that simulates the pushing phase of a propulsion cycle of a wheelchair.
+# todo: Implement a rolling constraint only and do OCP with it.
 """
-from casadi import MX, SX, vertcat, Function, jacobian, sqrt, atan2
+import numpy as np
+from casadi import MX, SX, vertcat, Function, jacobian
+
 from bioptim import (
     OptimalControlProgram,
     DynamicsList,
     ConfigureProblem,
     DynamicsFunctions,
-    ParameterList,
     ObjectiveFcn,
     ObjectiveList,
     ConstraintList,
@@ -23,21 +23,17 @@ from bioptim import (
     PhaseDynamics,
     HolonomicConstraintsList,
     HolonomicBiorbdModel,
-    CostType,
 )
-from biorbd_casadi import marker_index, segment_index, NodeSegment, Vector3d
-import numpy as np
-
 from custom_biorbd_model_holonomic import BiorbdModelCustomHolonomic
 
 
 def custom_dynamic(
-    time: MX | SX,
-    states: MX | SX,
-    controls: MX | SX,
-    parameters: MX | SX,
-    stochastic_variables: MX | SX,
-    nlp: NonLinearProgram,
+        time: MX | SX,
+        states: MX | SX,
+        controls: MX | SX,
+        parameters: MX | SX,
+        stochastic_variables: MX | SX,
+        nlp: NonLinearProgram,
 ) -> DynamicsEvaluation:
     """
     The custom dynamics function that provides the derivative of the states: dxdt = f(x, u, p)
@@ -98,10 +94,10 @@ def custom_configure(ocp: OptimalControlProgram, nlp: NonLinearProgram):
 
 
 def generate_rolling_joint_constraint(
-    biorbd_model: BiorbdModelCustomHolonomic,
-    translation_joint_index: int,
-    rotation_joint_index: int,
-    radius: float = 1,
+        biorbd_model: BiorbdModelCustomHolonomic,
+        translation_joint_index: int,
+        rotation_joint_index: int,
+        radius: float = 1,
 ) -> tuple[Function, Function, Function]:
     """Generate a rolling joint constraint between two joints"""
 
@@ -131,7 +127,8 @@ def generate_rolling_joint_constraint(
     ).expand()
 
     constraint_double_derivative = (
-        constraint_jacobian_func(q_sym) @ q_ddot_sym + jacobian(constraint_jacobian_func(q_sym) @ q_dot_sym, q_sym) @ q_dot_sym
+            constraint_jacobian_func(q_sym) @ q_ddot_sym + jacobian(constraint_jacobian_func(q_sym) @ q_dot_sym,
+                                                                    q_sym) @ q_dot_sym
     )
 
     constraint_double_derivative_func = Function(
@@ -146,9 +143,9 @@ def generate_rolling_joint_constraint(
 
 
 def prepare_ocp(
-    biorbd_model_path: str,
-    ode_solver: OdeSolverBase = OdeSolver.RK4(),
-    n_shooting=50,
+        biorbd_model_path: str,
+        ode_solver: OdeSolverBase = OdeSolver.RK4(),
+        n_shooting=50,
 ) -> OptimalControlProgram:
     """
     Prepare the program
@@ -194,7 +191,8 @@ def prepare_ocp(
 
     # Dynamics
     dynamics = DynamicsList()
-    dynamics.add(custom_configure, dynamic_function=custom_dynamic, phase_dynamics=PhaseDynamics.SHARED_DURING_THE_PHASE)
+    dynamics.add(custom_configure, dynamic_function=custom_dynamic,
+                 phase_dynamics=PhaseDynamics.SHARED_DURING_THE_PHASE)
 
     # Path Constraints
     constraints = ConstraintList()
@@ -223,10 +221,10 @@ def prepare_ocp(
     tau_min, tau_max, tau_init = -50, 50, 0
 
     u_bounds = BoundsList()
-    u_bounds.add("tau", min_bound=[tau_min]*2, max_bound=[tau_max]*2)
+    u_bounds.add("tau", min_bound=[tau_min] * 2, max_bound=[tau_max] * 2)
 
     u_init = InitialGuessList()
-    u_init.add("tau", initial_guess=[tau_init]*2)
+    u_init.add("tau", initial_guess=[tau_init] * 2)
     # ------------- #
 
     return OptimalControlProgram(
@@ -243,7 +241,7 @@ def prepare_ocp(
         ode_solver=ode_solver,
         use_sx=False,
         n_threads=8,
-    ) , bio_model
+    ), bio_model
 
 
 def main():

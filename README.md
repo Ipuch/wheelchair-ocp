@@ -1,2 +1,2 @@
 # wheelchair-ocp
-Optimal control for wheelchair propulsion
+Optimal control for wheelchair propulsion.

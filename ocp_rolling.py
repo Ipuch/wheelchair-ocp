@@ -341,25 +341,10 @@ def main():
     viz.load_movement(q)
     viz.exec()
 
-    # plt.title("Wheel torque")
-    # plt.plot(controls["tau"][0], label=r'$\tau$')
-    # plt.xlabel("Time (s)")
-    # plt.ylabel("Wheel torque (Nm)")
-    # plt.legend()
-    # plt.show()
-    #
-    # plt.title("Wheel angle")
-    # plt.plot(states["q_u"][0], label="x (m)")
-    # plt.xlabel("Time (s)")
-    # plt.ylabel("Avancée du fauteuil")
-    # plt.legend()
-    # plt.show()
-
-    time = sol.decision_time(to_merge=SolutionMerge.NODES)
-    plt.title("Lagrange multipliers of the holonomic constraint")
-    plt.plot(time, lambdas[0, :], label="y")
+    plt.title("Wheel torque")
+    plt.plot(controls["tau"][0], label=r'$\tau$')
     plt.xlabel("Time (s)")
-    plt.ylabel("Lagrange multipliers (N)")
+    plt.ylabel("Wheel torque (Nm)")
     plt.legend()
     plt.show()
 

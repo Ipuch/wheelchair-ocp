@@ -1,8 +1,9 @@
 """
 # todo: Implement a rolling constraint only and do OCP with it.
 """
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
 from casadi import MX, SX, vertcat, Function, jacobian
 
 from bioptim import (
@@ -23,19 +24,20 @@ from bioptim import (
     DynamicsEvaluation,
     BiMappingList,
     PhaseDynamics,
+    HolonomicBiorbdModel,
     HolonomicConstraintsList,
-    HolonomicBiorbdModel, InterpolationType,
+    InterpolationType,
 )
 from custom_biorbd_model_holonomic import BiorbdModelCustomHolonomic
 
 
 def custom_dynamic(
-        time: MX | SX,
-        states: MX | SX,
-        controls: MX | SX,
-        parameters: MX | SX,
-        stochastic_variables: MX | SX,
-        nlp: NonLinearProgram,
+    time: MX | SX,
+    states: MX | SX,
+    controls: MX | SX,
+    parameters: MX | SX,
+    stochastic_variables: MX | SX,
+    nlp: NonLinearProgram,
 ) -> DynamicsEvaluation:
     """
     The custom dynamics function that provides the derivative of the states: dxdt = f(x, u, p)
@@ -79,27 +81,23 @@ def custom_configure(ocp: OptimalControlProgram, nlp: NonLinearProgram):
 
     name_u = [nlp.model.name_dof[i] for i in range(nlp.model.nb_independent_joints)]
     axes_idx = ConfigureProblem._apply_phase_mapping(ocp, nlp, "q_u")
-    ConfigureProblem.configure_new_variable(
-        "q_u", name_u, ocp, nlp, True, False, False, axes_idx=axes_idx
-    )
+    ConfigureProblem.configure_new_variable("q_u", name_u, ocp, nlp, True, False, False, axes_idx=axes_idx)
 
     name = "qdot_u"
     name_qdot = ConfigureProblem._get_kinematics_based_names(nlp, "qdot_u")
     name_udot = [name_qdot[i] for i in range(nlp.model.nb_independent_joints)]
     axes_idx = ConfigureProblem._apply_phase_mapping(ocp, nlp, name)
-    ConfigureProblem.configure_new_variable(
-        name, name_udot, ocp, nlp, True, False, False, axes_idx=axes_idx
-    )
+    ConfigureProblem.configure_new_variable(name, name_udot, ocp, nlp, True, False, False, axes_idx=axes_idx)
 
     ConfigureProblem.configure_tau(ocp, nlp, as_states=False, as_controls=True)
     ConfigureProblem.configure_dynamics_function(ocp, nlp, custom_dynamic)
 
 
 def generate_rolling_joint_constraint(
-        biorbd_model: BiorbdModelCustomHolonomic,
-        translation_joint_index: int,
-        rotation_joint_index: int,
-        radius: float = 1,
+    biorbd_model: BiorbdModelCustomHolonomic,
+    translation_joint_index: int,
+    rotation_joint_index: int,
+    radius: float = 1,
 ) -> tuple[Function, Function, Function]:
     """Generate a rolling joint constraint between two joints"""
 
@@ -108,7 +106,7 @@ def generate_rolling_joint_constraint(
     q_dot_sym = MX.sym("q_dot", biorbd_model.nb_qdot, 1)
     q_ddot_sym = MX.sym("q_ddot", biorbd_model.nb_qdot, 1)
 
-    constraint = q_sym[translation_joint_index] - radius * q_sym[rotation_joint_index]
+    constraint = q_sym[translation_joint_index] + radius * q_sym[rotation_joint_index]
 
     constraint_jacobian = jacobian(constraint, q_sym)
 
@@ -129,8 +127,8 @@ def generate_rolling_joint_constraint(
     ).expand()
 
     constraint_double_derivative = (
-            constraint_jacobian_func(q_sym) @ q_ddot_sym + jacobian(constraint_jacobian_func(q_sym) @ q_dot_sym,
-                                                                    q_sym) @ q_dot_sym
+        constraint_jacobian_func(q_sym) @ q_ddot_sym
+        + jacobian(constraint_jacobian_func(q_sym) @ q_dot_sym, q_sym) @ q_dot_sym
     )
 
     constraint_double_derivative_func = Function(
@@ -143,7 +141,8 @@ def generate_rolling_joint_constraint(
 
     return constraint_func, constraint_jacobian_func, constraint_double_derivative_func
 
-def compute_all_states(sol, bio_model: HolonomicBiorbdModel):
+
+def compute_all_states(sol, bio_model: BiorbdModelCustomHolonomic):
     """
     Compute all the states from the solution of the optimal control program
 
@@ -198,10 +197,7 @@ def compute_all_states(sol, bio_model: HolonomicBiorbdModel):
         q_v_i = bio_model.compute_q_v(states["q_u"][:, i]).toarray()
         q[:, i] = bio_model.state_from_partition(states["q_u"][:, i][:, np.newaxis], q_v_i).toarray().squeeze()
         qdot[:, i] = bio_model.compute_qdot(q[:, i], states["qdot_u"][:, i]).toarray().squeeze()
-        qddot_u_i = (
-            partitioned_forward_dynamics_func(states["q_u"][:, i], states["qdot_u"][:, i], tau[:, i])
-            .toarray()
-        ) #Sam : enlevé le "squeeze" pour que le script fonctionne.. quel impact ?
+        qddot_u_i = partitioned_forward_dynamics_func(states["q_u"][:, i], states["qdot_u"][:, i], tau[:, i]).toarray()
         qddot[:, i] = bio_model.compute_qddot(q[:, i], qdot[:, i], qddot_u_i).toarray().squeeze()
         lambdas[:, i] = compute_lambdas_func(q[:, i], qdot[:, i], qddot[:, i], tau[:, i]).toarray().squeeze()
 
@@ -209,13 +205,13 @@ def compute_all_states(sol, bio_model: HolonomicBiorbdModel):
 
 
 def prepare_ocp(
-        biorbd_model_path: str,
-        ode_solver: OdeSolverBase = OdeSolver.RK4(),
-        n_shooting=50,
+    biorbd_model_path: str,
+    ode_solver: OdeSolverBase = OdeSolver.RK4(),
+    n_shooting=50,
 ) -> OptimalControlProgram:
     """
-    Prepare the program
 
+    Prepare the program
     Parameters
     ----------
     biorbd_model_path: str
@@ -232,7 +228,7 @@ def prepare_ocp(
 
     # --- Options --- #
     # BioModel path
-    bio_model = HolonomicBiorbdModel(biorbd_model_path)
+    bio_model = BiorbdModelCustomHolonomic(biorbd_model_path)
     holonomic_constraints = HolonomicConstraintsList()
     holonomic_constraints.add(
         key="rolling_joint_constraint",
@@ -242,79 +238,91 @@ def prepare_ocp(
         rotation_joint_index=1,
         radius=0.35,
     )
+    bio_model.set_holonomic_configuration(
+        constraints_list=holonomic_constraints, independent_joint_index=[1, 2, 3], dependent_joint_index=[0]
+    )
 
-    bio_model.set_holonomic_configuration(constraints_list=holonomic_constraints,
-                                          independent_joint_index=[0],
-                                          dependent_joint_index=[1]
-                                          )
-
-    final_time = 1
+    final_time = 1.5
 
     # Add objective functions
     objective_functions = ObjectiveList()
     objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="tau", weight=100, multi_thread=False)
-    objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=1, max_bound=3)
+    objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=1.5, max_bound=3)
 
     # Dynamics
     dynamics = DynamicsList()
-    dynamics.add(custom_configure, dynamic_function=custom_dynamic,
-                 phase_dynamics=PhaseDynamics.SHARED_DURING_THE_PHASE)
+    dynamics.add(
+        custom_configure, dynamic_function=custom_dynamic, phase_dynamics=PhaseDynamics.SHARED_DURING_THE_PHASE
+    )
 
     # Path Constraints
     constraints = ConstraintList()
 
     # Boundaries
-    variable_bimapping= BiMappingList()
-    variable_bimapping.add("q", to_second=[None,0], to_first=[1])
-    variable_bimapping.add("qdot", to_second=[None,0], to_first=[1])
+    variable_bimapping = BiMappingList()
+    variable_bimapping.add("q", to_second=[None, 0, 1, 2], to_first=[1, 2, 3])
+    variable_bimapping.add("qdot", to_second=[None, 0, 1, 2], to_first=[1, 2, 3])
     x_bounds = BoundsList()
     x_bounds["q_u"] = bio_model.bounds_from_ranges("q", mapping=variable_bimapping)
     x_bounds["qdot_u"] = bio_model.bounds_from_ranges("qdot", mapping=variable_bimapping)
 
+    # Gérer les positions initiales/finales des DDL
+    FRM_end_position = 1.2
+    r_wheel = 0.35  # TODO : aller récupérer automatiquement dans le .bioMod
+    shoulder_flex_start = -np.pi / 4
+    shoulder_flex_end = np.pi / 4
+    elbow_flex_start = np.pi / 2
+    elbow_flex_end = np.pi / 6
 
-    x_init = InitialGuessList()
-    x_bounds["q_u"].min[0, 0] = 0
-    x_bounds["q_u"].max[0, 0] = 0
-    x_bounds["q_u"].min[0, -1] = 1.2
-    x_bounds["q_u"].max[0, -1] = 1.2
-    x_bounds["qdot_u"].min[0, 0] = 0
-    x_bounds["qdot_u"].max[0, 0] = 0
-    x_bounds["qdot_u"].min[0, -1] = 0
-    x_bounds["qdot_u"].max[0, -1] = 0
-
+    x_bounds["q_u"][0, 0] = 0
+    x_bounds["q_u"][0, -1] = -FRM_end_position / r_wheel
+    x_bounds["q_u"][1, 0] = -np.pi / 2 + shoulder_flex_start
+    x_bounds["q_u"][1, -1] = -np.pi / 2 + shoulder_flex_end
+    x_bounds["q_u"][2, 0] = elbow_flex_start
+    x_bounds["q_u"][2, -1] = elbow_flex_end
+    # Vitesses angulaires = 0
+    x_bounds["qdot_u"].min[:, 0] = 0
+    x_bounds["qdot_u"].max[:, 0] = 0
+    x_bounds["qdot_u"].min[:, -1] = 0
+    x_bounds["qdot_u"].max[:, -1] = 0
 
     # Initial guess
     x_init = InitialGuessList()
-    x_init.add(key="q_u", initial_guess=np.zeros((1,)), interpolation=InterpolationType.CONSTANT)
-    x_init.add(key="qdot_u", initial_guess=np.zeros((1,)), interpolation=InterpolationType.CONSTANT)
+    x_init.add(key="q_u", initial_guess=np.zeros((3,)), interpolation=InterpolationType.CONSTANT)
+    x_init.add(key="qdot_u", initial_guess=np.zeros((3,)), interpolation=InterpolationType.CONSTANT)
 
     # Define control path constraint
     tau_min, tau_max, tau_init = -50, 50, 0
 
-    variable_bimapping.add("tau", to_second=[None, 0], to_first=[1])
+    variable_bimapping.add("tau", to_second=[None, 0, 1, 2], to_first=[1, 2, 3])
     u_bounds = BoundsList()
-    u_bounds.add("tau", min_bound=[tau_min] , max_bound=[tau_max])
+    u_bounds.add("tau", min_bound=[tau_min] * 3, max_bound=[tau_max] * 3)
+    u_bounds["tau"].min[0, 0] = 0
+    u_bounds["tau"].max[0, 0] = 0
 
     u_init = InitialGuessList()
-    u_init.add("tau", initial_guess=[tau_init])
+    u_init.add("tau", initial_guess=[tau_init] * 3)
     # ------------- #
 
-    return OptimalControlProgram(
+    return (
+        OptimalControlProgram(
+            bio_model,
+            dynamics=dynamics,
+            n_shooting=n_shooting,
+            phase_time=final_time,
+            x_init=x_init,
+            u_init=u_init,
+            x_bounds=x_bounds,
+            u_bounds=u_bounds,
+            objective_functions=objective_functions,
+            constraints=constraints,
+            ode_solver=ode_solver,
+            variable_mappings=variable_bimapping,
+            use_sx=False,
+            n_threads=8,
+        ),
         bio_model,
-        dynamics=dynamics,
-        n_shooting=n_shooting,
-        phase_time=final_time,
-        x_init=x_init,
-        u_init=u_init,
-        x_bounds=x_bounds,
-        u_bounds=u_bounds,
-        objective_functions=objective_functions,
-        constraints=constraints,
-        ode_solver=ode_solver,
-        variable_mappings=variable_bimapping,
-        use_sx=False,
-        n_threads=8,
-    ), bio_model
+    )
 
 
 def main():
@@ -322,29 +330,29 @@ def main():
     Runs the optimization and animates it
     """
 
-    model_path = "wheel_model.bioMod"
+    model_path = "wheelchair_model.bioMod"
     n_shooting = 50
     ocp, bio_model = prepare_ocp(biorbd_model_path=model_path, n_shooting=n_shooting)
     # ocp.add_plot_penalty(CostType.CONSTRAINTS)
     # --- Solve the program --- #
 
-    sol = ocp.solve(Solver.IPOPT(show_online_optim=False, show_options=dict(show_bounds=True), _max_iter=500))
+    sol = ocp.solve(Solver.IPOPT(show_online_optim=False, show_options=dict(show_bounds=False), _max_iter=500))
     states = sol.decision_states(to_merge=SolutionMerge.NODES)
     controls = sol.decision_controls(to_merge=SolutionMerge.NODES)
 
     # --- Show results --- #
     q, qdot, qddot, lambdas = compute_all_states(sol, bio_model)
-    #
+
     import bioviz
 
     viz = bioviz.Viz(model_path)
     viz.load_movement(q)
     viz.exec()
 
-    plt.title("Wheel torque")
-    plt.plot(controls["tau"][0], label=r'$\tau$')
+    plt.title("Angular vel. shoulder")
+    plt.plot(states["qdot_u"][1], label=r"$\dot{\theta}$")
     plt.xlabel("Time (s)")
-    plt.ylabel("Wheel torque (Nm)")
+    plt.ylabel("Angular vel. (rad/s)")
     plt.legend()
     plt.show()
 

@@ -1,10 +1,10 @@
-'''
+"""
 This file is the custom model got from Anais Farr's work that implement explicit holonomic constraints
 We need to adapt it to include rolling constraints and our close-loop constraint.
 
 NOTE: Bioptim implentation might have changed a bit since the creation of this file, so we might need an extra effort to
 adapt it to the current version of bioptim
-'''
+"""
 
 import biorbd as biorbd_eigen
 import biorbd_casadi as biorbd
@@ -35,9 +35,9 @@ class BiorbdModelCustomHolonomic(HolonomicBiorbdModel):
         l2:
             The length of the forearm
         xp:
-            Coordinate on x of the marker of the knee in the arm's frame
+            Coordinate on x of the marker of the contact point on handrim in the arm's frame
         yp:
-            Coordinate on y of the marker of the knee in the arm's frame
+            Coordinate on y of the marker of the contact point on handrim in the arm's frame
 
         Returns
         -------
@@ -45,12 +45,10 @@ class BiorbdModelCustomHolonomic(HolonomicBiorbdModel):
             The dependent joint
         """
 
-        theta2 = cas.acos(
-            (xp ** 2 + yp ** 2 - (l2 ** 2 + l1 ** 2)) / (2 * l1 * l2)
-        )
+        theta2 = cas.acos((xp**2 + yp**2 - (l2**2 + l1**2)) / (2 * l1 * l2))
         theta1 = cas.atan2(
             (-xp * l2 * cas.sin(theta2) + yp * (l1 + l2 * cas.cos(theta2))),
-            (xp * (l1 + l2 * cas.cos(theta2)) + yp * l2 * cas.sin(theta2))
+            (xp * (l1 + l2 * cas.cos(theta2)) + yp * l2 * cas.sin(theta2)),
         )
         return vertcat(theta1, theta2)
 
@@ -73,39 +71,42 @@ class BiorbdModelCustomHolonomic(HolonomicBiorbdModel):
             The angle of the dependente joint
 
         """
-        index_segment_ref = segment_index(self.model, "Arm_location")
-        index_forearm = segment_index(self.model, "Forearm")
-        index_marker_handrim = marker_index(self.model, "handrim_contact_point")
-        index_marker_hand = marker_index(self.model, "hand")
-
-        # Find length arm and forearm
-        forearm_JCS_trans = self.model.segments()[index_forearm].localJCS().trans().to_mx()
-        hand_JCS_trans = self.model.marker(index_marker_hand).to_mx()
-        l1 = cas.sqrt(forearm_JCS_trans[1] ** 2 + forearm_JCS_trans[2] ** 2)  # TODO: Maybe problem with square ?
-        l2 = cas.sqrt(hand_JCS_trans[1] ** 2 + hand_JCS_trans[2] ** 2)
-
-        v = MX.sym("v", self.nb_dependent_joints)
-        q = self.state_from_partition(u, v)
-
-        # Matrix RT "Arm location" (ref)
-        R_arm_global = self.model.globalJCS(q, index_segment_ref).transpose().to_mx()
-
-        # Perform the forward kinematics
-        markers = self.markers(q)
-        # marker_handrim_in_g = markers[index_marker_handrim]
-
-        marker_handrim_in_arm = (R_arm_global @ vertcat(markers[index_marker_handrim], cas.MX.ones(1)))[:3]
-        xp = -marker_handrim_in_arm[2]
-        yp = marker_handrim_in_arm[1]
-
-        # Find position dependente joint
-        theta = self.inverse_kinematics_2d(
-            l1=l1,
-            l2=l2,
-            xp=xp,
-            yp=yp,
-        )
-        return theta
+        # # index_segment_ref = segment_index(self.model, "Arm")
+        # # index_forearm = segment_index(self.model, "Forearm")
+        # # index_marker_handrim = marker_index(self.model, "handrim_contact_point")
+        # # index_marker_hand = marker_index(self.model, "hand")
+        # #
+        # # # Find length arm and forearm
+        # # forearm_JCS_trans = self.model.segments()[index_forearm].localJCS().trans().to_mx()
+        # # hand_JCS_trans = self.model.marker(index_marker_hand).to_mx()
+        # # l1 = cas.sqrt(forearm_JCS_trans[1] ** 2 + forearm_JCS_trans[2] ** 2)  # TODO: Maybe problem with square ?
+        # # l2 = cas.sqrt(hand_JCS_trans[1] ** 2 + hand_JCS_trans[2] ** 2)
+        #
+        # v = MX.sym("v", self.nb_dependent_joints)
+        # q = self.state_from_partition(u, v)
+        #
+        # # # Matrix RT "Arm location" (ref)
+        # # R_arm_global = self.model.globalJCS(q, index_segment_ref).transpose().to_mx()
+        # #
+        # # # Perform the forward kinematics
+        # # markers = self.markers(q)
+        # # # marker_handrim_in_g = markers[index_marker_handrim]
+        # #
+        # # marker_handrim_in_arm = (R_arm_global @ vertcat(markers[index_marker_handrim], cas.MX.ones(1)))[:3]
+        # # xp = -marker_handrim_in_arm[2]
+        # # yp = marker_handrim_in_arm[1]
+        #
+        # # # Find position dependent joint
+        # # theta = self.inverse_kinematics_2d(
+        # #     l1=l1,
+        # #     l2=l2,
+        # #     xp=xp,
+        # #     yp=yp,
+        # # )
+        # # return theta
+        model_eigen = biorbd_eigen.Model(self.model.path().absolutePath().to_string())
+        r_wheel = model_eigen.localJCS()[0].to_array()[1, -1]
+        return -u * r_wheel
 
     def compute_v_from_u_explicit_numeric(self, u: MX):
         """
@@ -193,7 +194,7 @@ class BiorbdModelCustomHolonomic(HolonomicBiorbdModel):
         ConfigureProblem.configure_dynamics_function(ocp, nlp, DynamicsFunctions.holonomic_torque_driven, expand=False)
 
     def partitioned_forward_dynamics(
-            self, q_u, qdot_u, tau, external_forces=None, f_contacts=None, q_v_init=None
+        self, q_u, qdot_u, tau, external_forces=None, f_contacts=None, q_v_init=None
     ) -> MX:
         """
         Sources
@@ -208,45 +209,45 @@ class BiorbdModelCustomHolonomic(HolonomicBiorbdModel):
             raise NotImplementedError("Contact forces are not implemented yet.")
 
         # compute q and qdot
-        q = self.compute_q(q_u, q_v_init=q_v_init)
+        q = self.compute_q_explicit(q_u, q_v_init=q_v_init)
         qdot = self.compute_qdot(q, qdot_u)
 
         partitioned_mass_matrix = self.partitioned_mass_matrix(q)
         m_uu = partitioned_mass_matrix[: self.nb_independent_joints, : self.nb_independent_joints]
-        m_uv = partitioned_mass_matrix[: self.nb_independent_joints, self.nb_independent_joints:]
-        m_vu = partitioned_mass_matrix[self.nb_independent_joints:, : self.nb_independent_joints]
-        m_vv = partitioned_mass_matrix[self.nb_independent_joints:, self.nb_independent_joints:]
+        m_uv = partitioned_mass_matrix[: self.nb_independent_joints, self.nb_independent_joints :]
+        m_vu = partitioned_mass_matrix[self.nb_independent_joints :, : self.nb_independent_joints]
+        m_vv = partitioned_mass_matrix[self.nb_independent_joints :, self.nb_independent_joints :]
 
         coupling_matrix_vu = self.coupling_matrix(q)
         modified_mass_matrix = (
-                m_uu
-                + m_uv @ coupling_matrix_vu
-                + coupling_matrix_vu.T @ m_vu
-                + coupling_matrix_vu.T @ m_vv @ coupling_matrix_vu
+            m_uu
+            + m_uv @ coupling_matrix_vu
+            + coupling_matrix_vu.T @ m_vu
+            + coupling_matrix_vu.T @ m_vv @ coupling_matrix_vu
         )
         second_term = m_uv + coupling_matrix_vu.T @ m_vv
 
         # compute the non-linear effect
         non_linear_effect = self.partitioned_non_linear_effect(q, qdot, external_forces, f_contacts)
         non_linear_effect_u = non_linear_effect[: self.nb_independent_joints]
-        non_linear_effect_v = non_linear_effect[self.nb_independent_joints:]
+        non_linear_effect_v = non_linear_effect[self.nb_independent_joints :]
 
         modified_non_linear_effect = non_linear_effect_u + coupling_matrix_vu.T @ non_linear_effect_v
 
         # compute the tau
         partitioned_tau = self.partitioned_tau(tau)
         tau_u = partitioned_tau[: self.nb_independent_joints]
-        tau_v = partitioned_tau[self.nb_independent_joints:]
+        tau_v = partitioned_tau[self.nb_independent_joints :]
 
         modified_generalized_forces = tau_u + coupling_matrix_vu.T @ tau_v
 
         qddot_u = inv(modified_mass_matrix) @ (
-                modified_generalized_forces - second_term @ self.biais_vector(q, qdot) - modified_non_linear_effect
+            modified_generalized_forces - second_term @ self.biais_vector(q, qdot) - modified_non_linear_effect
         )
 
         return qddot_u
 
-    def compute_q(self, q_u: MX, q_v_init: MX = None) -> MX:
+    def compute_q_explicit(self, q_u: MX, q_v_init: MX = None) -> MX:
         """
         EXPLICIT
 

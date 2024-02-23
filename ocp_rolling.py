@@ -194,7 +194,7 @@ def compute_all_states(sol, bio_model: BiorbdModelCustomHolonomic):
     )
 
     for i in range(n):
-        q_v_i = bio_model.compute_q_v(states["q_u"][:, i]).toarray()
+        q_v_i = bio_model.compute_q_explicit(states["q_u"][:, i]).toarray()
         q[:, i] = bio_model.state_from_partition(states["q_u"][:, i][:, np.newaxis], q_v_i).toarray().squeeze()
         qdot[:, i] = bio_model.compute_qdot(q[:, i], states["qdot_u"][:, i]).toarray().squeeze()
         qddot_u_i = partitioned_forward_dynamics_func(states["q_u"][:, i], states["qdot_u"][:, i], tau[:, i]).toarray()

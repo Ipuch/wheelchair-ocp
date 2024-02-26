@@ -102,14 +102,8 @@ def compute_all_states_from_indep_qu(sol, bio_model: BiorbdModelCustomHolonomic,
     lambdas = np.zeros((bio_model.nb_dependent_joints, n))
     tau = np.zeros((bio_model.nb_tau, n))
 
-    ## TODO : en auto et propre
-    # for i, independent_joint_index in enumerate(bio_model.independent_joint_index):
-    #     tau[independent_joint_index, :-1] = controls["tau"][i, :]
-    # ddl_actuated = tau_bimapping["tau"].to_first.map_idx  # parmi ceux là, qui sont les indep.
-    # for i, dependent_joint_index in enumerate(bio_model.dependent_joint_index):
-    #     tau[dependent_joint_index, :-1] = controls["tau"][i, :]
-
-    tau[2:4, :-1] = controls["tau"][0:2, :]  # on met coude-epaule dans les num associés
+    for i, actuated_joint_index in enumerate(tau_bimapping["tau"].to_first.map_idx):
+        tau[actuated_joint_index, :-1] = controls["tau"][i, :]
 
     # Partitioned forward dynamics
     q_u_sym = MX.sym("q_u_sym", bio_model.nb_independent_joints, 1)

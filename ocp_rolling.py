@@ -349,10 +349,15 @@ def main():
     viz.load_movement(q)
     viz.exec()
 
-    plt.title("Angular vel. shoulder")
-    plt.plot(states["qdot_u"][1], label=r"$\dot{\theta}$")
+    import matplotlib.pyplot as plt
+
+    time = sol.decision_time(to_merge=SolutionMerge.NODES)
+    plt.title("Lagrange multipliers of the holonomic constraint")
+    plt.plot(time, lambdas[0, :], label="rolling")
+    plt.plot(time, lambdas[1, :], label="F_x")
+    plt.plot(time, lambdas[2, :], label="F_y")
     plt.xlabel("Time (s)")
-    plt.ylabel("Angular vel. (rad/s)")
+    plt.ylabel("Lagrange multipliers (N)")
     plt.legend()
     plt.show()
 

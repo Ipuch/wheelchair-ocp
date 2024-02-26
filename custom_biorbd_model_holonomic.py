@@ -209,7 +209,7 @@ class BiorbdModelCustomHolonomic(HolonomicBiorbdModel):
             raise NotImplementedError("Contact forces are not implemented yet.")
 
         # compute q and qdot
-        q = self.compute_q_explicit(q_u, q_v_init=q_v_init)
+        q = self.compute_q(q_u, q_v_init=q_v_init)
         qdot = self.compute_qdot(q, qdot_u)
 
         partitioned_mass_matrix = self.partitioned_mass_matrix(q)
@@ -247,7 +247,7 @@ class BiorbdModelCustomHolonomic(HolonomicBiorbdModel):
 
         return qddot_u
 
-    def compute_q_explicit(self, q_u: MX, q_v_init: MX = None) -> MX:
+    def compute_q(self, q_u: MX, q_v_init: MX = None) -> MX:
         """
         EXPLICIT
 

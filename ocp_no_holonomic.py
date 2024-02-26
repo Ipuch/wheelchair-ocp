@@ -56,7 +56,7 @@ def prepare_ocp(
     # Add objective functions
     objective_functions = ObjectiveList()
     objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="tau", weight=100, multi_thread=False)
-    objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=0.5, max_bound=0.6)
+    objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=0.5, max_bound=2)
 
     # Dynamics
     dynamics = DynamicsList()
@@ -81,6 +81,10 @@ def prepare_ocp(
     x_bounds["q"].max[0, -1] = end
 
     x_bounds["qdot"] = bio_model.bounds_from_ranges("qdot")
+    x_bounds["qdot"].min[0,0] = 0
+    x_bounds["qdot"].max[0,0] = 0
+    x_bounds["qdot"].min[0,-1] = 0
+    x_bounds["qdot"].max[0,-1] = 0
 
     # Initial guess
     x_init = InitialGuessList()
@@ -91,12 +95,12 @@ def prepare_ocp(
     tau_min, tau_max, tau_init = -50, 50, 0
 
     variable_bimapping = BiMappingList()
-    variable_bimapping.add("tau", to_second=[None, None, 0, 1], to_first=[2, 3])
+    variable_bimapping.add("tau", to_second=[None, 0], to_first=[1])
     u_bounds = BoundsList()
-    u_bounds.add("tau", min_bound=[tau_min] * 2, max_bound=[tau_max] * 2)
+    u_bounds.add("tau", min_bound=[tau_min] * 1, max_bound=[tau_max] * 1)
 
     u_init = InitialGuessList()
-    u_init.add("tau", [tau_init] * 2)
+    u_init.add("tau", [tau_init] * 1)
     # ------------- #
 
     return OptimalControlProgram(
@@ -122,7 +126,7 @@ def main():
     Runs the optimization and animates it
     """
 
-    model_path = "wheelchair_model.bioMod"
+    model_path = "wheel_model.bioMod"
     n_shooting = 50
     ocp, bio_model = prepare_ocp(biorbd_model_path=model_path, n_shooting=n_shooting)
 
@@ -131,6 +135,7 @@ def main():
 
     # # --- Show results --- #
     # # sol.animate()
+    sol.graphs()
     import bioviz
     viz = bioviz.Viz(model_path)
     viz.load_movement(sol.decision_states(to_merge=SolutionMerge.NODES)["q"])

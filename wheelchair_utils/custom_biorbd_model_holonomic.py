@@ -9,7 +9,6 @@ adapt it to the current version of bioptim
 import biorbd as biorbd_eigen
 import biorbd_casadi as biorbd
 import casadi as cas
-import numpy as np
 from biorbd import marker_index, segment_index
 from casadi import MX, vertcat, inv
 
@@ -83,58 +82,6 @@ class BiorbdModelCustomHolonomic(HolonomicBiorbdModel):
         l2 = cas.sqrt(hand_JCS_trans[0] ** 2 + hand_JCS_trans[1] ** 2)
 
         v = MX.sym("v", self.nb_dependent_joints - 1)  ## TODO : automatiser
-        q = vertcat(0, u, v)
-        #
-        # # # Matrix RT "Wheel location" (ref)
-        R_wheel_global = self.model.globalJCS(q, index_segment_ref).transpose().to_mx()
-        # #
-        # # # Perform the forward kinematics
-        model_eigen = biorbd_eigen.Model(self.model.path().absolutePath().to_string())
-        r_wheel = model_eigen.localJCS()[0].to_array()[1, -1]
-
-        markers = self.markers(q)
-        marker_handrim_in_mwc_x = markers[index_marker_handrim][0]
-        marker_handrim_in_mwc_y = markers[index_marker_handrim][1] - r_wheel - 0.771
-
-        # # Find position dependent joint
-        theta = self.inverse_kinematics_2d(
-            l1=l1,
-            l2=l2,
-            xp=marker_handrim_in_mwc_x,
-            yp=marker_handrim_in_mwc_y,
-        )
-        return vertcat(-u * r_wheel, theta)
-
-    def compute_v_from_u_explicit_numeric(self, u: MX):
-        """
-        Compute the dependent joint from the independent joint,
-        This is done by solving the system of equations given by the holonomic constraints
-        At the end of this step, we get admissible generalized coordinates w.r.t. the holonomic constraints
-
-        !! numeric version of the function
-
-        Parameters
-        ----------
-        u: MX
-            The generalized coordinates of independent joint
-
-        Returns
-        -------
-        theta:
-            The angle of the dependente joint
-        """
-        index_segment_ref = segment_index(self.model, "ContactFrame")
-        index_forearm = segment_index(self.model, "Forearm")
-        index_marker_handrim = marker_index(self.model, "handrim_contact_point")
-        index_marker_hand = marker_index(self.model, "hand")
-        #
-        # # Find length arm and forearm
-        forearm_JCS_trans = self.model.segments()[index_forearm].localJCS().trans().to_mx()
-        hand_JCS_trans = self.model.marker(index_marker_hand).to_mx()
-        l1 = np.sqrt(forearm_JCS_trans[0] ** 2 + forearm_JCS_trans[1] ** 2)  # TODO: Maybe problem with square ?
-        l2 = np.sqrt(hand_JCS_trans[0] ** 2 + hand_JCS_trans[1] ** 2)
-
-        v = DM.zeros(2, 1)  # TODO : automatiser propre en numérique
         q = vertcat(0, u, v)
         #
         # # # Matrix RT "Wheel location" (ref)

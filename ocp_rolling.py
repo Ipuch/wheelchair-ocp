@@ -22,8 +22,8 @@ from bioptim import (
     InterpolationType,
 )
 from wheelchair_utils.custom_biorbd_model_holonomic import BiorbdModelCustomHolonomic
-from wheelchair_utils.dynamics import compute_all_states
-from wheelchair_utils.dynamics import custom_dynamic, custom_configure
+from wheelchair_utils.dynamics import compute_all_states_from_indep_qu
+from wheelchair_utils.dynamics import holonomic_torque_driven_state_space_dynamics, configure_holonomic_torque_driven
 from wheelchair_utils.holon_constraints import generate_close_loop_constraint, generate_rolling_joint_constraint
 
 
@@ -86,10 +86,9 @@ def prepare_ocp(
     # Dynamics
     dynamics = DynamicsList()
     dynamics.add(
-        custom_configure,
-        dynamic_function=custom_dynamic,
+        configure_holonomic_torque_driven,
+        dynamic_function=holonomic_torque_driven_state_space_dynamics,
         phase_dynamics=PhaseDynamics.SHARED_DURING_THE_PHASE,
-        # skip_continuity=True,
     )
 
     # Path Constraints
@@ -181,7 +180,7 @@ def main():
     controls = sol.decision_controls(to_merge=SolutionMerge.NODES)
 
     # # --- Show results --- #
-    q, qdot, qddot, lambdas = compute_all_states(sol, bio_model, variable_bimapping)
+    q, qdot, qddot, lambdas = compute_all_states_from_indep_qu(sol, bio_model, variable_bimapping)
     #
     import bioviz
 

@@ -13,7 +13,7 @@ from bioptim import (
 from .custom_biorbd_model_holonomic import BiorbdModelCustomHolonomic
 
 
-def custom_dynamic(
+def holonomic_torque_driven_state_space_dynamics(
     time: MX | SX,
     states: MX | SX,
     controls: MX | SX,
@@ -48,7 +48,7 @@ def custom_dynamic(
     return DynamicsEvaluation(dxdt=vertcat(udot, uddot), defects=None)
 
 
-def custom_configure(ocp: OptimalControlProgram, nlp: NonLinearProgram):
+def configure_holonomic_torque_driven(ocp: OptimalControlProgram, nlp: NonLinearProgram):
     """
     Tell the program which variables are states and controls.
     The user is expected to use the ConfigureProblem.configure_xxx functions.
@@ -72,12 +72,12 @@ def custom_configure(ocp: OptimalControlProgram, nlp: NonLinearProgram):
     ConfigureProblem.configure_new_variable(name, name_udot, ocp, nlp, True, False, False, axes_idx=axes_idx)
 
     ConfigureProblem.configure_tau(ocp, nlp, as_states=False, as_controls=True)
-    ConfigureProblem.configure_dynamics_function(ocp, nlp, custom_dynamic)
+    ConfigureProblem.configure_dynamics_function(ocp, nlp, holonomic_torque_driven_state_space_dynamics)
 
 
-def compute_all_states(sol, bio_model: BiorbdModelCustomHolonomic, tau_bimapping):
+def compute_all_states_from_indep_qu(sol, bio_model: BiorbdModelCustomHolonomic, tau_bimapping):
     """
-    Compute all the states from the solution of the optimal control program
+    Compute all the states from the independent q_u in the solution of the optimal control program
 
     Parameters
     ----------

@@ -4,4 +4,4 @@ from .dynamics import (
     configure_holonomic_torque_driven,
     compute_all_states_from_indep_qu,
 )
-from .holon_constraints import generate_close_loop_constraint, generate_rolling_joint_constraint
+from .holonomic_constraints import generate_close_loop_constraint, generate_rolling_joint_constraint

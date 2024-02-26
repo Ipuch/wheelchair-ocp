@@ -1,5 +1,5 @@
 """
-This examples uses bioptim to generate and solve an optimal control problem with a simple wheelchair/user 2D model with the following assumptions:
+This example uses bioptim to generate and solve an optimal control problem with a simple wheelchair/user 2D model with the following assumptions:
 - there is a torque around the wheel axle
 - the upper limbs are actuated (shoulder, elbow) but no constraint is given (i.e. no handrim contact and nothing in cost function)
 """

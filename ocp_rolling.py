@@ -3,13 +3,10 @@
 """
 
 import numpy as np
-from casadi import MX, SX, vertcat, Function, jacobian
 
 from bioptim import (
     OptimalControlProgram,
     DynamicsList,
-    ConfigureProblem,
-    DynamicsFunctions,
     ObjectiveFcn,
     ObjectiveList,
     ConstraintList,
@@ -17,259 +14,17 @@ from bioptim import (
     InitialGuessList,
     OdeSolver,
     OdeSolverBase,
-    NonLinearProgram,
     Solver,
     SolutionMerge,
-    DynamicsEvaluation,
     BiMappingList,
     PhaseDynamics,
-    HolonomicBiorbdModel,
     HolonomicConstraintsList,
     InterpolationType,
 )
-from custom_biorbd_model_holonomic import BiorbdModelCustomHolonomic
-
-
-def custom_dynamic(
-    time: MX | SX,
-    states: MX | SX,
-    controls: MX | SX,
-    parameters: MX | SX,
-    stochastic_variables: MX | SX,
-    nlp: NonLinearProgram,
-) -> DynamicsEvaluation:
-    """
-    The custom dynamics function that provides the derivative of the states: dxdt = f(x, u, p)
-
-    Parameters
-    ----------
-    states: MX | SX
-        The state of the system
-    controls: MX | SX
-        The controls of the system
-    parameters: MX | SX
-        The parameters acting on the system
-    nlp: NonLinearProgram
-        A reference to the phase
-
-    Returns
-    -------
-    The derivative of the states in the tuple[MX | SX] format
-    """
-
-    u = DynamicsFunctions.get(nlp.states["q_u"], states)
-    udot = DynamicsFunctions.get(nlp.states["qdot_u"], states)
-    tau = DynamicsFunctions.get(nlp.controls["tau"], controls)
-    uddot = nlp.model.partitioned_forward_dynamics(u, udot, tau)
-
-    return DynamicsEvaluation(dxdt=vertcat(udot, uddot), defects=None)
-
-
-def custom_configure(ocp: OptimalControlProgram, nlp: NonLinearProgram):
-    """
-    Tell the program which variables are states and controls.
-    The user is expected to use the ConfigureProblem.configure_xxx functions.
-
-    Parameters
-    ----------
-    ocp: OptimalControlProgram
-        A reference to the ocp
-    nlp: NonLinearProgram
-        A reference to the phase
-    """
-
-    name_u = [nlp.model.name_dof[i] for i in range(nlp.model.nb_independent_joints)]
-    axes_idx = ConfigureProblem._apply_phase_mapping(ocp, nlp, "q_u")
-    ConfigureProblem.configure_new_variable("q_u", name_u, ocp, nlp, True, False, False, axes_idx=axes_idx)
-
-    name = "qdot_u"
-    name_qdot = ConfigureProblem._get_kinematics_based_names(nlp, "qdot_u")
-    name_udot = [name_qdot[i] for i in range(nlp.model.nb_independent_joints)]
-    axes_idx = ConfigureProblem._apply_phase_mapping(ocp, nlp, name)
-    ConfigureProblem.configure_new_variable(name, name_udot, ocp, nlp, True, False, False, axes_idx=axes_idx)
-
-    ConfigureProblem.configure_tau(ocp, nlp, as_states=False, as_controls=True)
-    ConfigureProblem.configure_dynamics_function(ocp, nlp, custom_dynamic)
-
-
-def generate_rolling_joint_constraint(
-    biorbd_model: BiorbdModelCustomHolonomic,
-    translation_joint_index: int,
-    rotation_joint_index: int,
-    radius: float = 1,
-) -> tuple[Function, Function, Function]:
-    """Generate a rolling joint constraint between two joints"""
-
-    # symbolic variables to create the functions
-    q_sym = MX.sym("q", biorbd_model.nb_q, 1)
-    q_dot_sym = MX.sym("q_dot", biorbd_model.nb_qdot, 1)
-    q_ddot_sym = MX.sym("q_ddot", biorbd_model.nb_qdot, 1)
-
-    constraint = q_sym[translation_joint_index] + radius * q_sym[rotation_joint_index]
-
-    constraint_jacobian = jacobian(constraint, q_sym)
-
-    constraint_func = Function(
-        "rolling_joint_constraint",
-        [q_sym],
-        [constraint],
-        ["q"],
-        ["rolling_joint_constraint"],
-    ).expand()
-
-    constraint_jacobian_func = Function(
-        "rolling_joint_constraint_jacobian",
-        [q_sym],
-        [constraint_jacobian],
-        ["q"],
-        ["rolling_joint_constraint_jacobian"],
-    ).expand()
-
-    constraint_double_derivative = (
-        constraint_jacobian_func(q_sym) @ q_ddot_sym
-        + jacobian(constraint_jacobian_func(q_sym) @ q_dot_sym, q_sym) @ q_dot_sym
-    )
-
-    constraint_double_derivative_func = Function(
-        "rolling_joint_constraint_double_derivative",
-        [q_sym, q_dot_sym, q_ddot_sym],
-        [constraint_double_derivative],
-        ["q", "q_dot", "q_ddot"],
-        ["rolling_joint_constraint_double_derivative"],
-    ).expand()
-
-    return constraint_func, constraint_jacobian_func, constraint_double_derivative_func
-
-
-def generate_close_loop_constraint(
-    biorbd_model: BiorbdModelCustomHolonomic,
-    marker_1: str,
-    marker_2: str,
-    index: slice = slice(0, 3),
-    local_frame_index: int = None,
-) -> tuple[Function, Function, Function]:
-    """Generate a close loop constraint between two markers"""
-
-    # symbolic variables to create the functions
-    q_sym = MX.sym("q", biorbd_model.nb_q, 1)
-    q_dot_sym = MX.sym("q_dot", biorbd_model.nb_qdot, 1)
-    q_ddot_sym = MX.sym("q_ddot", biorbd_model.nb_qdot, 1)
-
-    # symbolic markers in global frame
-    marker_1_sym = biorbd_model.marker(q_sym, index=biorbd_model.marker_index(marker_1))
-    marker_2_sym = biorbd_model.marker(q_sym, index=biorbd_model.marker_index(marker_2))
-
-    # if local frame is provided, the markers are expressed in the same local frame
-    if local_frame_index is not None:
-        jcs_t = biorbd_model.homogeneous_matrices_in_global(q_sym, local_frame_index, inverse=True)
-        marker_1_sym = (jcs_t @ vertcat(marker_1_sym, 1))[:3]
-        marker_2_sym = (jcs_t @ vertcat(marker_2_sym, 1))[:3]
-
-    # the constraint is the distance between the two markers, set to zero
-    constraint = (marker_1_sym - marker_2_sym)[index]
-    # the jacobian of the constraint
-    constraint_jacobian = jacobian(constraint, q_sym)
-
-    constraint_func = Function(
-        "holonomic_constraint",
-        [q_sym],
-        [constraint],
-        ["q"],
-        ["holonomic_constraint"],
-    ).expand()
-
-    constraint_jacobian_func = Function(
-        "holonomic_constraint_jacobian",
-        [q_sym],
-        [constraint_jacobian],
-        ["q"],
-        ["holonomic_constraint_jacobian"],
-    ).expand()
-
-    # the double derivative of the constraint
-    constraint_double_derivative = (
-        constraint_jacobian_func(q_sym) @ q_ddot_sym + constraint_jacobian_func(q_dot_sym) @ q_dot_sym
-    )
-
-    constraint_double_derivative_func = Function(
-        "holonomic_constraint_double_derivative",
-        [q_sym, q_dot_sym, q_ddot_sym],
-        [constraint_double_derivative],
-        ["q", "q_dot", "q_ddot"],
-        ["holonomic_constraint_double_derivative"],
-    ).expand()
-
-    return constraint_func, constraint_jacobian_func, constraint_double_derivative_func
-
-
-def compute_all_states(sol, bio_model: BiorbdModelCustomHolonomic, tau_bimapping):
-    """
-    Compute all the states from the solution of the optimal control program
-
-    Parameters
-    ----------
-    bio_model: HolonomicBiorbdModel
-        The biorbd model
-    sol:
-        The solution of the optimal control program
-
-    Returns
-    -------
-
-    """
-
-    states = sol.decision_states(to_merge=SolutionMerge.NODES)
-    controls = sol.decision_controls(to_merge=SolutionMerge.NODES)
-
-    n = states["q_u"].shape[1]
-
-    q = np.zeros((bio_model.nb_q, n))
-    qdot = np.zeros((bio_model.nb_q, n))
-    qddot = np.zeros((bio_model.nb_q, n))
-    lambdas = np.zeros((bio_model.nb_dependent_joints, n))
-    tau = np.zeros((bio_model.nb_tau, n))
-
-    ## TODO : en auto et propre
-    # for i, independent_joint_index in enumerate(bio_model.independent_joint_index):
-    #     tau[independent_joint_index, :-1] = controls["tau"][i, :]
-    # ddl_actuated = tau_bimapping["tau"].to_first.map_idx  # parmi ceux là, qui sont les indep.
-    # for i, dependent_joint_index in enumerate(bio_model.dependent_joint_index):
-    #     tau[dependent_joint_index, :-1] = controls["tau"][i, :]
-
-    tau[2:4, :-1] = controls["tau"][0:2, :]  # on met coude-epaule dans les num associés
-
-    # Partitioned forward dynamics
-    q_u_sym = MX.sym("q_u_sym", bio_model.nb_independent_joints, 1)
-    qdot_u_sym = MX.sym("qdot_u_sym", bio_model.nb_independent_joints, 1)
-    tau_sym = MX.sym("tau_sym", bio_model.nb_tau, 1)
-    partitioned_forward_dynamics_func = Function(
-        "partitioned_forward_dynamics",
-        [q_u_sym, qdot_u_sym, tau_sym],
-        [bio_model.partitioned_forward_dynamics(q_u_sym, qdot_u_sym, tau_sym)],
-    )
-    # Lagrangian multipliers
-    q_sym = MX.sym("q_sym", bio_model.nb_q, 1)
-    qdot_sym = MX.sym("qdot_sym", bio_model.nb_q, 1)
-    qddot_sym = MX.sym("qddot_sym", bio_model.nb_q, 1)
-    compute_lambdas_func = Function(
-        "compute_the_lagrangian_multipliers",
-        [q_sym, qdot_sym, qddot_sym, tau_sym],
-        [bio_model.compute_the_lagrangian_multipliers(q_sym, qdot_sym, qddot_sym, tau_sym)],
-    )
-
-    for i in range(n):
-        q_v_i = bio_model.compute_v_from_u_explicit_symbolic(states["q_u"][:, i])
-        q_v_i_function = Function("q_v_i_eval", [], [q_v_i])
-        q_v_i = q_v_i_function()["o0"]
-        q[:, i] = (
-            bio_model.state_from_partition(states["q_u"][:, i][:, np.newaxis], q_v_i).toarray().squeeze()
-        )  # TODO : add error si mauvaises dimensions
-        qdot[:, i] = bio_model.compute_qdot(q[:, i], states["qdot_u"][:, i]).toarray().squeeze()
-        qddot_u_i = partitioned_forward_dynamics_func(states["q_u"][:, i], states["qdot_u"][:, i], tau[:, i]).toarray()
-        qddot[:, i] = bio_model.compute_qddot(q[:, i], qdot[:, i], qddot_u_i).toarray().squeeze()
-        lambdas[:, i] = compute_lambdas_func(q[:, i], qdot[:, i], qddot[:, i], tau[:, i]).toarray().squeeze()
-
-    return q, qdot, qddot, lambdas
+from wheelchair_utils.custom_biorbd_model_holonomic import BiorbdModelCustomHolonomic
+from wheelchair_utils.dynamics import compute_all_states
+from wheelchair_utils.dynamics import custom_dynamic, custom_configure
+from wheelchair_utils.holon_constraints import generate_close_loop_constraint, generate_rolling_joint_constraint
 
 
 def prepare_ocp(
@@ -314,7 +69,7 @@ def prepare_ocp(
         marker_1="handrim_contact_point",
         marker_2="hand",
         index=slice(0, 2),
-        local_frame_index=0,
+        local_frame_index=1,
     )
 
     bio_model.set_holonomic_configuration(
@@ -326,7 +81,7 @@ def prepare_ocp(
     # Add objective functions
     objective_functions = ObjectiveList()
     objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="tau", weight=100, multi_thread=False)
-    objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=1.5, max_bound=3)
+    objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=1.5, max_bound=1.7)
 
     # Dynamics
     dynamics = DynamicsList()
@@ -365,10 +120,10 @@ def prepare_ocp(
     # x_bounds["q_u"][2, 0] = elbow_flex_start
     # x_bounds["q_u"][2, -1] = elbow_flex_end
     # Vitesses angulaires = 0
-    # x_bounds["qdot_u"].min[:, 0] = 0
-    # x_bounds["qdot_u"].max[:, 0] = 0
-    # x_bounds["qdot_u"].min[:, -1] = 0
-    # x_bounds["qdot_u"].max[:, -1] = 0
+    x_bounds["qdot_u"].min[:, 0] = 0
+    x_bounds["qdot_u"].max[:, 0] = 0
+    x_bounds["qdot_u"].min[:, -1] = -0.1
+    x_bounds["qdot_u"].max[:, -1] = 0.1
 
     # Initial guess
     x_init = InitialGuessList()

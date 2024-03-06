@@ -70,7 +70,8 @@ def custom_phase_transition_post(controllers: list[PenaltyController, PenaltyCon
     Bvu = controllers[0].model.coupling_matrix(q_pre)
     vdot_pre = Bvu @ udot_pre
     qdot_pre = controllers[0].model.state_from_partition(udot_pre, vdot_pre)
-
+    q_pre = q_pre[slice(1, 4)]  # TODO : à clean pour aller chercher les indépendants
+    qdot_pre = qdot_pre[slice(1, 4)]
     states_pre = vertcat(q_pre, qdot_pre)
     states_post = controllers[1].states.cx
 

@@ -56,7 +56,7 @@ def prepare_ocp(
 
     # --- Options --- #
     # BioModel path
-    bio_model = BiorbdModelCustomHolonomic(biorbd_model_path)
+    bio_model = BiorbdModelCustomHolonomic(biorbd_model_path, "free")
     holonomic_constraints = HolonomicConstraintsList()
     holonomic_constraints.add(
         key="rolling_joint_constraint",
@@ -178,8 +178,10 @@ def main():
     #
     import bioviz
 
+    q_cycle = np.hstack(q)
+
     viz = bioviz.Viz(model_path)
-    viz.load_movement(q)
+    viz.load_movement(q_cycle)
     viz.exec()
 
 

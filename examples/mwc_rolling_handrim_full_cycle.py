@@ -54,7 +54,10 @@ def prepare_ocp(
 
     # --- Options --- #
     # BioModel path
-    bio_model = (BiorbdModelCustomHolonomic(biorbd_model_path), BiorbdModelCustomHolonomic(biorbd_model_path))
+    bio_model = (
+        BiorbdModelCustomHolonomic(biorbd_model_path, "push_phase"),
+        BiorbdModelCustomHolonomic(biorbd_model_path, "push_phase"),
+    )
 
     # Constraints
     holonomic_constraints = HolonomicConstraintsList()
@@ -227,37 +230,10 @@ def main():
     #
     import bioviz
 
+    q_cycle = np.hstack(q)
     viz = bioviz.Viz(model_path)
-    viz.load_movement(q)
+    viz.load_movement(q_cycle)
     viz.exec()
-
-    import matplotlib.pyplot as plt
-
-    time = sol.decision_time(to_merge=SolutionMerge.NODES)
-    fig, axs = plt.subplots(1, 3)
-
-    axs[0].plot(controls["tau"][0, :], label=r"$\tau_{shoulder}$")
-    axs[0].plot(controls["tau"][1, :], label=r"$\tau_{elbow}$")
-    axs[0].set_title("Controls of the OCP - actuated DoF")
-    axs[0].set_ylabel("Torque (N.m)")
-    axs[0].legend()
-
-    axs[1].plot(time, qdot[2, :], "o", label=r"$\dot{theta}_{shoulder}$")
-    axs[1].plot(time, qdot[-1, :], "o", label=r"$\dot{theta}_{elbow}$")
-    axs[1].set_title("Controls of the OCP - actuated DoF")
-    axs[1].set_xlabel("Time (s)")
-    axs[1].set_ylabel("Torque (N.m)")
-    axs[1].legend()
-
-    axs[2].plot(time, lambdas[0, :], label="rolling")
-    axs[2].plot(time, lambdas[1, :], label=r"$F_r$")
-    axs[2].plot(time, lambdas[2, :], label=r"$F_{\theta}$")
-    axs[2].set_title("Lagrange multipliers of the holonomic constraint")
-    axs[2].set_xlabel("Time (s)")
-    axs[2].set_ylabel("Lagrange multipliers (N)")
-    axs[2].legend()
-
-    plt.show()
 
 
 if __name__ == "__main__":

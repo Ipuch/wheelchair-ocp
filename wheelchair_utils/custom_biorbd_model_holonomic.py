@@ -20,8 +20,9 @@ class BiorbdModelCustomHolonomic(HolonomicBiorbdModel):
     This class allows to define a biorbd model with custom holonomic constraints.
     """
 
-    def __init__(self, bio_model: str | biorbd.Model):
+    def __init__(self, bio_model: str | biorbd.Model, mwc_phase: str):
         super().__init__(bio_model)
+        self.mwc_phase = mwc_phase
 
     @staticmethod
     def inverse_kinematics_2d(l1, l2, xp, yp):
@@ -70,39 +71,46 @@ class BiorbdModelCustomHolonomic(HolonomicBiorbdModel):
             The angle of the dependent joint
 
         """
-        index_segment_ref = segment_index(self.model, "ContactFrame")
-        index_forearm = segment_index(self.model, "Forearm")
-        index_marker_handrim = marker_index(self.model, "handrim_contact_point")
-        index_marker_hand = marker_index(self.model, "hand")
-        #
-        # # Find length arm and forearm
-        forearm_JCS_trans = self.model.segments()[index_forearm].localJCS().trans().to_mx()
-        hand_JCS_trans = self.model.marker(index_marker_hand).to_mx()
-        l1 = cas.sqrt(forearm_JCS_trans[0] ** 2 + forearm_JCS_trans[1] ** 2)  # TODO: Maybe problem with square ?
-        l2 = cas.sqrt(hand_JCS_trans[0] ** 2 + hand_JCS_trans[1] ** 2)
-
-        v = MX.sym("v", self.nb_dependent_joints - 1)  ## TODO : automatiser
-        q = vertcat(0, u, v)
-        #
-        # # # Matrix RT "Wheel location" (ref)
-        R_wheel_global = self.model.globalJCS(q, index_segment_ref).transpose().to_mx()
-        # #
-        # # # Perform the forward kinematics
         model_eigen = biorbd_eigen.Model(self.model.path().absolutePath().to_string())
-        r_wheel = model_eigen.localJCS()[0].to_array()[1, -1]
+        index_segment_mwc = segment_index(self.model, "Wheelchair")
+        r_wheel = model_eigen.localJCS()[index_segment_mwc].to_array()[1, -1]
 
-        markers = self.markers(q)
-        marker_handrim_in_mwc_x = markers[index_marker_handrim][0]
-        marker_handrim_in_mwc_y = markers[index_marker_handrim][1] - r_wheel - 0.771
+        if self.mwc_phase == "push_phase":
+            index_segment_ref = segment_index(self.model, "ContactFrame")
+            index_forearm = segment_index(self.model, "Forearm")
+            index_marker_handrim = marker_index(self.model, "handrim_contact_point")
+            index_marker_hand = marker_index(self.model, "hand")
+            #
+            # # Find length arm and forearm
+            forearm_JCS_trans = self.model.segments()[index_forearm].localJCS().trans().to_mx()
+            hand_JCS_trans = self.model.marker(index_marker_hand).to_mx()
+            l1 = cas.sqrt(forearm_JCS_trans[0] ** 2 + forearm_JCS_trans[1] ** 2)
+            l2 = cas.sqrt(hand_JCS_trans[0] ** 2 + hand_JCS_trans[1] ** 2)
 
-        # # Find position dependent joint
-        theta = self.inverse_kinematics_2d(
-            l1=l1,
-            l2=l2,
-            xp=marker_handrim_in_mwc_x,
-            yp=marker_handrim_in_mwc_y,
-        )
-        return vertcat(-u * r_wheel, theta)
+            v = MX.sym("v", self.nb_dependent_joints - 1)  ## TODO : automatiser
+            q = vertcat(0, u, v)
+            #
+            # # # Matrix RT "Wheel location" (ref)
+            R_wheel_global = self.model.globalJCS(q, index_segment_ref).transpose().to_mx()
+            # #
+
+            markers = self.markers(q)
+            marker_handrim_in_mwc_x = markers[index_marker_handrim][0]
+            marker_handrim_in_mwc_y = (
+                markers[index_marker_handrim][1] - r_wheel - 0.771
+            )  ## TODO : aller récupérer proprement dans le .bioMod
+
+            # # Find position dependent joint
+            theta = self.inverse_kinematics_2d(
+                l1=l1,
+                l2=l2,
+                xp=marker_handrim_in_mwc_x,
+                yp=marker_handrim_in_mwc_y,
+            )
+            return vertcat(-u * r_wheel, theta)
+
+        else:
+            return vertcat(-u * r_wheel)
 
     @staticmethod
     def holonomic_torque_driven(ocp, nlp, mapping):

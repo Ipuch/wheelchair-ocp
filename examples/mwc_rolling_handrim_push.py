@@ -1,5 +1,8 @@
 """
-# todo: Implement a rolling constraint only and do OCP with it.
+This example uses bioptim to generate and solve an optimal control problem with a simple wheelchair/user 2D model with the following assumptions:
+- only the upper limbs are actuated (shoulder, elbow)
+- closed-loop constraint implemented to maintain hand on handrim (push phase)
+- wheel angle = only independent DoF piloting others (mwc translation + arm angles through inverse kinematics)
 """
 
 import numpy as np
@@ -24,7 +27,7 @@ from bioptim import (
 from wheelchair_utils.custom_biorbd_model_holonomic import BiorbdModelCustomHolonomic
 from wheelchair_utils.dynamics import compute_all_states_from_indep_qu
 from wheelchair_utils.dynamics import holonomic_torque_driven_state_space_dynamics, configure_holonomic_torque_driven
-from wheelchair_utils.holon_constraints import generate_close_loop_constraint, generate_rolling_joint_constraint
+from wheelchair_utils.holonomic_constraints import generate_close_loop_constraint, generate_rolling_joint_constraint
 
 
 def prepare_ocp(
@@ -76,12 +79,12 @@ def prepare_ocp(
         constraints_list=holonomic_constraints, independent_joint_index=[1], dependent_joint_index=[0, 2, 3]
     )
 
-    final_time = 1.5
+    final_time = 2
 
     # Add objective functions
     objective_functions = ObjectiveList()
     objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="tau", weight=100, multi_thread=False)
-    objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=1.5, max_bound=1.7)
+    objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=2, max_bound=2.3)
 
     # Dynamics
     dynamics = DynamicsList()
@@ -102,22 +105,12 @@ def prepare_ocp(
     x_bounds["q_u"] = bio_model.bounds_from_ranges("q", mapping=variable_bimapping)
     x_bounds["qdot_u"] = bio_model.bounds_from_ranges("qdot", mapping=variable_bimapping)
 
-    # Gérer les positions initiales/finales des DDL
-    FRM_end_position = 1.2
-    r_wheel = 0.35  # TODO : aller récupérer automatiquement dans le .bioMod
-    shoulder_flex_start = -np.pi / 4
-    shoulder_flex_end = np.pi / 4
-    elbow_flex_start = np.pi / 2
-    elbow_flex_end = np.pi / 6
+    # Gérer les positions initiales/finales des DDL : wheel angle
+    x_bounds["q_u"].min[0, 0] = 0.35
+    x_bounds["q_u"].max[0, 0] = 0.35
+    x_bounds["q_u"].min[0, -1] = -0.6
+    x_bounds["q_u"].max[0, -1] = -0.6
 
-    x_bounds["q_u"].min[0, 0] = 0.4
-    x_bounds["q_u"].max[0, 0] = 0.4
-    x_bounds["q_u"].min[0, -1] = -0.7
-    x_bounds["q_u"].max[0, -1] = -0.7
-    # x_bounds["q_u"][1, 0] = -np.pi / 2 + shoulder_flex_start
-    # x_bounds["q_u"][1, -1] = -np.pi / 2 + shoulder_flex_end
-    # x_bounds["q_u"][2, 0] = elbow_flex_start
-    # x_bounds["q_u"][2, -1] = elbow_flex_end
     # Vitesses angulaires = 0
     x_bounds["qdot_u"].min[:, 0] = 0
     x_bounds["qdot_u"].max[:, 0] = 0
@@ -169,7 +162,7 @@ def main():
     Runs the optimization and animates it
     """
 
-    model_path = "wheelchair_model.bioMod"
+    model_path = "models/wheelchair_model.bioMod"
     n_shooting = 50
     ocp, bio_model, variable_bimapping = prepare_ocp(biorbd_model_path=model_path, n_shooting=n_shooting)
     # ocp.add_plot_penalty(CostType.CONSTRAINTS)
@@ -191,13 +184,29 @@ def main():
     import matplotlib.pyplot as plt
 
     time = sol.decision_time(to_merge=SolutionMerge.NODES)
-    plt.title("Lagrange multipliers of the holonomic constraint")
-    plt.plot(time, lambdas[0, :], label="rolling")
-    plt.plot(time, lambdas[1, :], label="F_x")
-    plt.plot(time, lambdas[2, :], label="F_y")
-    plt.xlabel("Time (s)")
-    plt.ylabel("Lagrange multipliers (N)")
-    plt.legend()
+    fig, axs = plt.subplots(1, 3)
+
+    axs[0].plot(controls["tau"][0, :], label=r"$\tau_{shoulder}$")
+    axs[0].plot(controls["tau"][1, :], label=r"$\tau_{elbow}$")
+    axs[0].set_title("Controls of the OCP - actuated DoF")
+    axs[0].set_ylabel("Torque (N.m)")
+    axs[0].legend()
+
+    axs[1].plot(time, qdot[2, :], "o", label=r"$\dot{\theta}_{shoulder}$")
+    axs[1].plot(time, qdot[-1, :], "o", label=r"$\dot{\theta}_{elbow}$")
+    axs[1].set_title("Controls of the OCP - actuated DoF")
+    axs[1].set_xlabel("Time (s)")
+    axs[1].set_ylabel("Torque (N.m)")
+    axs[1].legend()
+
+    axs[2].plot(time, lambdas[0, :], label="rolling")
+    axs[2].plot(time, lambdas[1, :], label=r"$F_r$")
+    axs[2].plot(time, lambdas[2, :], label=r"$F_{\theta}$")
+    axs[2].set_title("Lagrange multipliers of the holonomic constraint")
+    axs[2].set_xlabel("Time (s)")
+    axs[2].set_ylabel("Lagrange multipliers (N)")
+    axs[2].legend()
+
     plt.show()
 
 

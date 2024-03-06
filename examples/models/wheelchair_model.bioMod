@@ -297,7 +297,7 @@ segment Arm
     rt 0 0 0 xyz 0 0.7710000000000001 0
     rotations z
     ranges
-        -10*pi 10*pi
+        -pi 0
     mass 3.84  // Mass of the upper arm segment
     inertia
         0.030711263616000004 0 0
@@ -326,7 +326,7 @@ segment Forearm
     rt 0 0 0 xyz 0.271 0 0
     rotations z
     ranges
-        -3*pi 3*pi
+        -0.1 pi
     mass 3.68  // Mass of the forearm segment
     inertia
         0.04297025777218477 0 0

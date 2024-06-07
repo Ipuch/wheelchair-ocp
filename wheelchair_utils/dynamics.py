@@ -19,6 +19,7 @@ def holonomic_torque_driven_state_space_dynamics(
     controls: MX | SX,
     parameters: MX | SX,
     stochastic_variables: MX | SX,
+    numerical_time_series: MX | SX,
     nlp: NonLinearProgram,
 ) -> DynamicsEvaluation:
     """
@@ -48,7 +49,7 @@ def holonomic_torque_driven_state_space_dynamics(
     return DynamicsEvaluation(dxdt=vertcat(udot, uddot), defects=None)
 
 
-def configure_holonomic_torque_driven(ocp: OptimalControlProgram, nlp: NonLinearProgram):
+def configure_holonomic_torque_driven(ocp: OptimalControlProgram, nlp: NonLinearProgram, numerical_data_timeseries):
     """
     Tell the program which variables are states and controls.
     The user is expected to use the ConfigureProblem.configure_xxx functions.

@@ -78,6 +78,7 @@ class BiorbdModelCustomHolonomic(HolonomicBiorbdModel):
         if self.mwc_phase == "push_phase":
             index_segment_ref = segment_index(self.model, "ContactFrame")
             index_forearm = segment_index(self.model, "Forearm")
+            index_arm = segment_index(self.model, "Arm")
             index_marker_handrim = marker_index(self.model, "handrim_contact_point")
             index_marker_hand = marker_index(self.model, "hand")
             #
@@ -89,16 +90,11 @@ class BiorbdModelCustomHolonomic(HolonomicBiorbdModel):
 
             v = MX.sym("v", self.nb_dependent_joints - 1)  ## TODO : automatiser
             q = vertcat(0, u, v)
-            #
-            # # # Matrix RT "Wheel location" (ref)
-            R_wheel_global = self.model.globalJCS(q, index_segment_ref).transpose().to_mx()
-            # #
 
             markers = self.markers(q)
             marker_handrim_in_mwc_x = markers[index_marker_handrim][0]
-            marker_handrim_in_mwc_y = (
-                markers[index_marker_handrim][1] - r_wheel - 0.771
-            )  ## TODO : aller récupérer proprement dans le .bioMod
+            wheelchair_to_shoulder_translation = model_eigen.localJCS()[index_arm].to_array()[1, -1]
+            marker_handrim_in_mwc_y = markers[index_marker_handrim][1] - r_wheel - wheelchair_to_shoulder_translation
 
             # # Find position dependent joint
             theta = self.inverse_kinematics_2d(
@@ -110,7 +106,7 @@ class BiorbdModelCustomHolonomic(HolonomicBiorbdModel):
             return vertcat(-u * r_wheel, theta)
 
         else:
-            return vertcat(-u * r_wheel)
+            return vertcat(-u[0] * r_wheel)  # aller recuperer l'indice
 
     @staticmethod
     def holonomic_torque_driven(ocp, nlp, mapping):

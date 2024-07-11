@@ -62,13 +62,13 @@ def configure_holonomic_torque_driven(ocp: OptimalControlProgram, nlp: NonLinear
         A reference to the phase
     """
 
-    name_u = [nlp.model.name_dof[i] for i in range(nlp.model.nb_independent_joints)]
+    name_u = [nlp.model.name_dof[i] for i in nlp.model.independent_joint_index]
     axes_idx = ConfigureProblem._apply_phase_mapping(ocp, nlp, "q_u")
     ConfigureProblem.configure_new_variable("q_u", name_u, ocp, nlp, True, False, False, axes_idx=axes_idx)
 
     name = "qdot_u"
     name_qdot = ConfigureProblem._get_kinematics_based_names(nlp, "qdot_u")
-    name_udot = [name_qdot[i] for i in range(nlp.model.nb_independent_joints)]
+    name_udot = [name_qdot[i] for i in nlp.model.independent_joint_index]
     axes_idx = ConfigureProblem._apply_phase_mapping(ocp, nlp, name)
     ConfigureProblem.configure_new_variable(name, name_udot, ocp, nlp, True, False, False, axes_idx=axes_idx)
 

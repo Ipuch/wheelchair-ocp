@@ -58,7 +58,7 @@ def prepare_ocp(
     # BioModel path
     bio_model = (
         BiorbdModelCustomHolonomic(biorbd_model_path, "push_phase"),
-        BiorbdModelCustomHolonomic(biorbd_model_path, "push_phase"),
+        BiorbdModelCustomHolonomic(biorbd_model_path, "recovery_phase"),  # remettre le marqueur au bon endroit
     )
 
     # Constraints
@@ -104,9 +104,10 @@ def prepare_ocp(
     final_time = (1.5, 2.2)
     objective_functions = ObjectiveList()
     objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="tau", weight=100, multi_thread=False, phase=0)
-    # objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="tau", weight=100, multi_thread=False, phase=1)
+    objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="qdot_u", weight=100, multi_thread=False, phase=1)
+    objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="tau", weight=1, multi_thread=False, phase=1)
     objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=1.3, max_bound=1.8, phase=0)
-    objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=2, max_bound=4, phase=1)
+    objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=2, max_bound=3, phase=1)
 
     # Dynamics
     dynamics = DynamicsList()
@@ -148,18 +149,18 @@ def prepare_ocp(
 
     # x_bounds[1]["q_u"].min[0, 0] = -0.6
     # x_bounds[1]["q_u"].max[0, 0] = -0.6
-    # x_bounds[1]["q_u"].min[0, -1] = -3
-    # x_bounds[1]["q_u"].max[0, -1] = -2
-    # x_bounds[1]["q_u"].min[1, -1] = -2.15
-    # x_bounds[1]["q_u"].max[1, -1] = -2
-    # x_bounds[1]["q_u"].min[2, -1] = 0.5
-    # x_bounds[1]["q_u"].max[2, -1] = 0.7
+    x_bounds[1]["q_u"].min[0, -1] = -5
+    x_bounds[1]["q_u"].max[0, -1] = -4
+    x_bounds[1]["q_u"].min[1, -1] = -2.2
+    x_bounds[1]["q_u"].max[1, -1] = -2.1
+    x_bounds[1]["q_u"].min[2, -1] = 0.69
+    x_bounds[1]["q_u"].max[2, -1] = 0.71
 
     # Vitesses angulaires = 0
     x_bounds[0]["qdot_u"].min[:, 0] = 0
     x_bounds[0]["qdot_u"].max[:, 0] = 0
     x_bounds[0]["qdot_u"].max[:, -1] = -1
-    x_bounds[0]["qdot_u"].min[:, -1] = -4
+    x_bounds[0]["qdot_u"].min[:, -1] = -10
 
     # x_bounds[1]["qdot_u"].min[:, 0] = 0
     # x_bounds[1]["qdot_u"].max[:, 0] = 0
@@ -223,12 +224,12 @@ def main():
     """
 
     model_path = "models/wheelchair_model.bioMod"
-    n_shooting = (30, 30)
+    n_shooting = (20, 20)
     ocp, bio_model, variable_bimapping = prepare_ocp(biorbd_model_path=model_path, n_shooting=n_shooting)
     # ocp.add_plot_penalty(CostType.CONSTRAINTS)
     # --- Solve the program --- #
 
-    sol = ocp.solve(Solver.IPOPT(show_online_optim=False, show_options=dict(show_bounds=False), _max_iter=0))
+    sol = ocp.solve(Solver.IPOPT(show_online_optim=False, show_options=dict(show_bounds=False), _max_iter=500))
     states = sol.decision_states(to_merge=SolutionMerge.NODES)
     controls = sol.decision_controls(to_merge=SolutionMerge.NODES)
 

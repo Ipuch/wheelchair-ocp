@@ -128,7 +128,7 @@ def compute_all_states_from_indep_qu(sol, bio_model: BiorbdModelCustomHolonomic,
         compute_lambdas_func = Function(
             "compute_the_lagrangian_multipliers",
             [q_sym, qdot_sym, qddot_sym, tau_sym],
-            [bio_model.compute_the_lagrangian_multipliers(q_sym, qdot_sym, qddot_sym, tau_sym)],
+            [bio_model._compute_the_lagrangian_multipliers(q_sym, qdot_sym, qddot_sym, tau_sym)],
         )
 
         for i in range(n):
@@ -180,7 +180,7 @@ def compute_all_states_from_indep_qu(sol, bio_model: BiorbdModelCustomHolonomic,
             compute_lambdas_func = Function(
                 "compute_the_lagrangian_multipliers",
                 [q_sym, qdot_sym, qddot_sym, tau_sym],
-                [bio_model[i_phase].compute_the_lagrangian_multipliers(q_sym, qdot_sym, qddot_sym, tau_sym)],
+                [bio_model[i_phase]._compute_the_lagrangian_multipliers(q_sym, qdot_sym, qddot_sym, tau_sym)],
             )
 
             for i in range(n):

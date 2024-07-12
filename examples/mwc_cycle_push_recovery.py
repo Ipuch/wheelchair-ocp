@@ -24,10 +24,12 @@ from bioptim import (
     HolonomicConstraintsList,
     InterpolationType,
     PhaseTransitionList,
+    DynamicsFcn,
 )
 from wheelchair_utils.custom_biorbd_model_holonomic import BiorbdModelCustomHolonomic
 from wheelchair_utils.dynamics import compute_all_states_from_indep_qu
-from wheelchair_utils.dynamics import holonomic_torque_driven_state_space_dynamics, configure_holonomic_torque_driven
+
+# from wheelchair_utils.dynamics import holonomic_torque_driven_state_space_dynamics, configure_holonomic_torque_driven
 from wheelchair_utils.holonomic_constraints import generate_close_loop_constraint, generate_rolling_joint_constraint
 from wheelchair_utils.phase_transitions import custom_phase_transition_post
 
@@ -112,14 +114,12 @@ def prepare_ocp(
     # Dynamics
     dynamics = DynamicsList()
     dynamics.add(
-        configure_holonomic_torque_driven,
-        dynamic_function=holonomic_torque_driven_state_space_dynamics,
+        DynamicsFcn.HOLONOMIC_TORQUE_DRIVEN,
         phase_dynamics=PhaseDynamics.SHARED_DURING_THE_PHASE,
         phase=0,
     )
     dynamics.add(
-        configure_holonomic_torque_driven,
-        dynamic_function=holonomic_torque_driven_state_space_dynamics,
+        DynamicsFcn.HOLONOMIC_TORQUE_DRIVEN,
         phase_dynamics=PhaseDynamics.SHARED_DURING_THE_PHASE,
         phase=1,
     )
@@ -229,7 +229,7 @@ def main():
     # ocp.add_plot_penalty(CostType.CONSTRAINTS)
     # --- Solve the program --- #
 
-    sol = ocp.solve(Solver.IPOPT(show_online_optim=False, show_options=dict(show_bounds=False), _max_iter=500))
+    sol = ocp.solve(Solver.IPOPT(show_online_optim=True, show_options=dict(show_bounds=False), _max_iter=500))
     states = sol.decision_states(to_merge=SolutionMerge.NODES)
     controls = sol.decision_controls(to_merge=SolutionMerge.NODES)
 

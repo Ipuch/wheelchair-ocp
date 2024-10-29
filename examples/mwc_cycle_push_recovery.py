@@ -26,9 +26,8 @@ from bioptim import (
     PhaseTransitionList,
     DynamicsFcn,
 )
+from wheelchair_utils import compute_all_states_from_indep_qu
 from wheelchair_utils.custom_biorbd_model_holonomic import BiorbdModelCustomHolonomic
-from wheelchair_utils.dynamics import compute_all_states_from_indep_qu
-
 # from wheelchair_utils.dynamics import holonomic_torque_driven_state_space_dynamics, configure_holonomic_torque_driven
 from wheelchair_utils.holonomic_constraints import generate_close_loop_constraint, generate_rolling_joint_constraint
 from wheelchair_utils.phase_transitions import custom_phase_transition_post
@@ -103,13 +102,13 @@ def prepare_ocp(
     )
 
     # Objective functions
-    final_time = (1.5, 2.2)
+    final_time = (1.5, 0.8)
     objective_functions = ObjectiveList()
     objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="tau", weight=100, multi_thread=False, phase=0)
     objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="qdot_u", weight=100, multi_thread=False, phase=1)
     objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="tau", weight=1, multi_thread=False, phase=1)
     objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=1.3, max_bound=1.8, phase=0)
-    objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=2, max_bound=3, phase=1)
+    objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=2, max_bound=5, phase=1)
 
     # Dynamics
     dynamics = DynamicsList()
@@ -142,25 +141,25 @@ def prepare_ocp(
     x_bounds.add("qdot_u", bounds=bio_model[1].bounds_from_ranges("qdot", mapping=variable_bimapping_recovery), phase=1)
 
     # Gérer les positions initiales/finales des DDL : wheel angle
+    # x_bounds[0]["q_u"].min[0, 0] = 0
+    # x_bounds[0]["q_u"].max[0, 0] = 0
     x_bounds[0]["q_u"].min[0, 0] = 0.3
     x_bounds[0]["q_u"].max[0, 0] = 0.5
-    x_bounds[0]["q_u"].min[0, -1] = -0.7
-    x_bounds[0]["q_u"].max[0, -1] = -0.4
 
     # x_bounds[1]["q_u"].min[0, 0] = -0.6
     # x_bounds[1]["q_u"].max[0, 0] = -0.6
-    x_bounds[1]["q_u"].min[0, -1] = -5
+    x_bounds[1]["q_u"].min[0, -1] = -7
     x_bounds[1]["q_u"].max[0, -1] = -4
-    x_bounds[1]["q_u"].min[1, -1] = -2.2
-    x_bounds[1]["q_u"].max[1, -1] = -2.1
-    x_bounds[1]["q_u"].min[2, -1] = 0.69
-    x_bounds[1]["q_u"].max[2, -1] = 0.71
+    x_bounds[1]["q_u"].min[1, -1] = -2.7
+    x_bounds[1]["q_u"].max[1, -1] = -2.2
+    x_bounds[1]["q_u"].min[2, -1] = 0.6
+    x_bounds[1]["q_u"].max[2, -1] = 0.8
 
     # Vitesses angulaires = 0
     x_bounds[0]["qdot_u"].min[:, 0] = 0
     x_bounds[0]["qdot_u"].max[:, 0] = 0
-    x_bounds[0]["qdot_u"].max[:, -1] = -1
-    x_bounds[0]["qdot_u"].min[:, -1] = -10
+    x_bounds[0]["qdot_u"].max[:, -1] = 2
+    x_bounds[0]["qdot_u"].min[:, -1] = -2
 
     # x_bounds[1]["qdot_u"].min[:, 0] = 0
     # x_bounds[1]["qdot_u"].max[:, 0] = 0

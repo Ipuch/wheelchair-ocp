@@ -24,7 +24,10 @@ from bioptim import (
     HolonomicConstraintsList,
     InterpolationType,
     PhaseTransitionList,
+    CostType,
 )
+
+from external.bioptim import OnlineOptim
 from wheelchair_utils import compute_all_states_from_indep_qu
 from wheelchair_utils.custom_biorbd_model_holonomic_new import HolonomicTorqueWheelchairModel
 
@@ -102,10 +105,12 @@ def prepare_ocp(
     # Objective functions
     objective_functions = ObjectiveList()
     objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="tau", weight=100, multi_thread=False, phase=0)
-    objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="qdot_u", weight=100, multi_thread=False, phase=1)
     objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="tau", weight=1, multi_thread=False, phase=1)
-    objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=1.3, max_bound=1.8, phase=0)
-    objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=2, max_bound=5, phase=1)
+
+    objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="qdot_u", weight=100, multi_thread=False, phase=1)
+
+    objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=0.5, max_bound=1, phase=0)
+    objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=0.5, max_bound=2, phase=1)
 
     # Dynamics
     dynamics = DynamicsOptionsList()
@@ -205,7 +210,7 @@ def prepare_ocp(
             variable_mappings=variable_bimapping_ocp,
             phase_transitions=phase_transition,
             use_sx=False,
-            n_threads=8,
+            n_threads=15,
         ),
         bio_model,
         variable_bimapping_ocp,
@@ -228,7 +233,13 @@ def main():
 
     # --- Solve the program --- #
     sol = ocp.solve(
-        Solver.IPOPT(show_online_optim=False, show_options=dict(show_bounds=False), _max_iter=500),
+        Solver.IPOPT(
+            # show_online_optim=OnlineOptim.SERVER,
+            # show_online_optim=OnlineOptim.MULTIPROCESS_SERVER,
+            # show_online_optim=OnlineOptim.DEFAULT,
+            show_options=dict(show_bounds=True),
+            _max_iter=200,
+        ),
     )
     states = sol.decision_states(to_merge=SolutionMerge.NODES)
     controls = sol.decision_controls(to_merge=SolutionMerge.NODES)
@@ -247,12 +258,14 @@ def main():
     biorbd_model = BiorbdModel(model_path)
 
     multi_phase_rerun = MultiPhaseRerun()
-    multi_phase_rerun.add_phase(t_span_0, phase=0)
-    multi_phase_rerun.add_phase(t_span_1, phase=1)
+    multi_phase_rerun.add_phase(sol.decision_time(to_merge=SolutionMerge.NODES)[0], phase=0)
+    multi_phase_rerun.add_phase(sol.decision_time(to_merge=SolutionMerge.NODES)[1], phase=1)
     multi_phase_rerun.add_animated_model(biorbd_model, q[0], phase=0)
     multi_phase_rerun.add_animated_model(biorbd_model, q[1], phase=1)
 
     multi_phase_rerun.rerun("push_recovery")
+
+    sol.graphs(show_bounds=True)
 
     # import matplotlib.pyplot as plt
     #

@@ -73,8 +73,6 @@ def prepare_ocp(
         mwc_phase="free",
     )
 
-    final_time = 1.5
-
     # Add objective functions
     objective_functions = ObjectiveList()
     objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="tau", weight=100, multi_thread=False)
@@ -126,7 +124,9 @@ def prepare_ocp(
     # Define control path constraint
     tau_min, tau_max, tau_init = -50, 50, 1
 
-    variable_bimapping.add("tau", to_second=[None, 0, 1, 2], to_first=[1, 2, 3])
+    # variable_bimapping.add("tau", to_second=[None, 0, 1, 2], to_first=[1, 2, 3])
+    variable_bimapping.add("tau", to_second=[None, None, 0, 1], to_first=[2, 3], phase=0)
+
     u_bounds = BoundsList()
     u_bounds.add("tau", min_bound=[tau_min] * 3, max_bound=[tau_max] * 3)
     u_bounds["tau"].min[0, 0] = 0

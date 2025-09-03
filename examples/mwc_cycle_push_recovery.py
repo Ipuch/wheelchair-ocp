@@ -36,6 +36,7 @@ def prepare_ocp(
     biorbd_model_path: str,
     ode_solver: OdeSolverBase = OdeSolver.RK4(),
     n_shooting=50,
+    final_time=(1.5, 0.8),
 ) -> OptimalControlProgram:
     """
 
@@ -48,6 +49,8 @@ def prepare_ocp(
         The type of ode solver used
     n_shooting: int
         The number of shooting points
+    final_time
+        The time at the end of each phase
 
     Returns
     -------
@@ -97,7 +100,6 @@ def prepare_ocp(
     )
 
     # Objective functions
-    final_time = (1.5, 0.8)
     objective_functions = ObjectiveList()
     objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="tau", weight=100, multi_thread=False, phase=0)
     objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="qdot_u", weight=100, multi_thread=False, phase=1)
@@ -186,8 +188,7 @@ def prepare_ocp(
     u_init.add("tau", initial_guess=[tau_init] * 2, phase=1)
 
     phase_transition = PhaseTransitionList()
-    # phase_transition.add(custom_phase_transition_post, phase_pre_idx=0)
-    # ------------- #
+    phase_transition.add(custom_phase_transition_post, phase_pre_idx=0)
 
     return (
         OptimalControlProgram(
@@ -215,35 +216,39 @@ def main():
     """
     Runs the optimization and animates it
     """
-
     model_path = "models/wheelchair_model.bioMod"
     n_shooting = (20, 20)
-    ocp, bio_model, variable_bimapping = prepare_ocp(biorbd_model_path=model_path, n_shooting=n_shooting)
+    final_time = (1.5, 0.8)
+    ocp, bio_model, variable_bimapping = prepare_ocp(
+        biorbd_model_path=model_path,
+        n_shooting=n_shooting,
+        final_time=final_time,
+    )
     # ocp.add_plot_penalty(CostType.CONSTRAINTS)
-    # --- Solve the program --- #
 
-    sol = ocp.solve(Solver.IPOPT(show_online_optim=False, show_options=dict(show_bounds=False), _max_iter=500))
+    # --- Solve the program --- #
+    sol = ocp.solve(
+        Solver.IPOPT(show_online_optim=False, show_options=dict(show_bounds=False), _max_iter=500),
+    )
     states = sol.decision_states(to_merge=SolutionMerge.NODES)
     controls = sol.decision_controls(to_merge=SolutionMerge.NODES)
 
     # # --- Show results --- #
     q, qdot, qddot, lambdas = compute_all_states_from_indep_qu(sol, bio_model, variable_bimapping)
-    #
     q_cycle = np.hstack(q)
 
     from pyorerun import MultiPhaseRerun, BiorbdModel
 
     # building some time components
-    nb_seconds = 1
-    t_span_0 = np.linspace(0, nb_seconds, n_shooting[0] + 1)
-    t_span_1 = np.linspace(0, nb_seconds, n_shooting[1] + 1)
+    t_span_0 = np.linspace(0, final_time[0], n_shooting[0] + 1)
+    t_span_1 = np.linspace(final_time[0], final_time[0] + final_time[1], n_shooting[1] + 1)
 
     # loading biorbd model
     biorbd_model = BiorbdModel(model_path)
 
     multi_phase_rerun = MultiPhaseRerun()
-    multi_phase_rerun.add_phase(t_span_0)
-    multi_phase_rerun.add_phase(t_span_1)
+    multi_phase_rerun.add_phase(t_span_0, phase=0)
+    multi_phase_rerun.add_phase(t_span_1, phase=1)
     multi_phase_rerun.add_animated_model(biorbd_model, q[0], phase=0)
     multi_phase_rerun.add_animated_model(biorbd_model, q[1], phase=1)
 

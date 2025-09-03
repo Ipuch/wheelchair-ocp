@@ -107,6 +107,9 @@ def compute_all_states_from_indep_qu(sol, bio_model: BiorbdModelCustomHolonomic,
         qdot = np.zeros((bio_model.nb_q, n))
         qddot = np.zeros((bio_model.nb_q, n))
         lambdas = np.zeros((bio_model.nb_dependent_joints, n))
+
+        nb_tau = controls["tau"].shape[0]
+
         tau = np.zeros((bio_model.nb_tau, n))
 
         for i, actuated_joint_index in enumerate(tau_bimapping["tau"].to_first.map_idx):
@@ -161,10 +164,6 @@ def compute_all_states_from_indep_qu(sol, bio_model: BiorbdModelCustomHolonomic,
             qdot = np.zeros((bio_model[i_phase].nb_q, n))
             qddot = np.zeros((bio_model[i_phase].nb_q, n))
             lambdas = np.zeros((bio_model[i_phase].nb_dependent_joints, n))
-            tau = np.zeros((bio_model[i_phase].nb_tau, n))
-
-            for i, actuated_joint_index in enumerate(tau_bimapping[i_phase]["tau"].to_first.map_idx):
-                tau[actuated_joint_index, :-1] = controls[i_phase]["tau"][i, :]
 
             # Partitioned forward dynamics
             q_u_sym = MX.sym("q_u_sym", bio_model[i_phase].nb_independent_joints, 1)
@@ -186,7 +185,10 @@ def compute_all_states_from_indep_qu(sol, bio_model: BiorbdModelCustomHolonomic,
             )
 
             states_i = states[i_phase]
-            tau_i = controls[i_phase]["tau"]
+            tau_i = np.zeros((bio_model[i_phase].nb_tau, n))
+
+            for i, actuated_joint_index in enumerate(tau_bimapping[i_phase]["tau"].to_first.map_idx):
+                tau_i[actuated_joint_index, :-1] = controls[i_phase]["tau"][i, :]
 
             for i in range(n):
                 q_v_i = bio_model[i_phase].compute_v_from_u_explicit_symbolic(states_i["q_u"][:, i])
@@ -194,7 +196,7 @@ def compute_all_states_from_indep_qu(sol, bio_model: BiorbdModelCustomHolonomic,
                 q_v_i = q_v_i_function()["o0"]
                 q[:, i] = (
                     bio_model[i_phase]
-                    .state_from_partition(states_i[i_phase]["q_u"][:, i][:, np.newaxis], q_v_i)
+                    .state_from_partition(states_i["q_u"][:, i][:, np.newaxis], q_v_i)
                     .toarray()
                     .squeeze()
                 )  # TODO : add error si mauvaises dimensions
@@ -202,11 +204,11 @@ def compute_all_states_from_indep_qu(sol, bio_model: BiorbdModelCustomHolonomic,
                 qddot_u_i = partitioned_forward_dynamics_func(
                     states_i["q_u"][:, i],
                     states_i["qdot_u"][:, i],
-                    np.zeros((bio_model.nb_dependent_joints, 1)),
+                    np.zeros((bio_model[i_phase].nb_dependent_joints, 1)),
                     tau_i[:, i],
                 ).toarray()
                 qddot[:, i] = bio_model[i_phase].compute_qddot()(q[:, i], qdot[:, i], qddot_u_i).toarray().squeeze()
-                lambdas[:, i] = compute_lambdas_func(q[:, i], qdot[:, i], qddot[:, i], tau[:, i]).toarray().squeeze()
+                lambdas[:, i] = compute_lambdas_func(q[:, i], qdot[:, i], qddot[:, i], tau_i[:, i]).toarray().squeeze()
 
             q_cycle.append(q)
             qdot_cycle.append(qdot)

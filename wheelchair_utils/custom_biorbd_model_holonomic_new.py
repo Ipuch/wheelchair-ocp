@@ -11,6 +11,7 @@ from bioptim import HolonomicBiorbdModel, HolonomicTorqueDynamics, HolonomicCons
 
 import biorbd as biorbd_eigen
 from biorbd import segment_index, marker_index
+from biorbd_casadi import GeneralizedCoordinates
 import numpy as np
 from casadi import vertcat, acos, atan2, sin, cos, MX, sqrt, Function
 
@@ -95,10 +96,18 @@ class CustomHolonomicBiorbdModel(HolonomicBiorbdModel):
             v = self.q_v[1:]  # NOTE : all the dependent joints except the translation of the wheelchair
             q = vertcat(0, u, v)
 
-            markers = self.markers()(q, self.parameters)
-            marker_handrim_in_mwc_x = markers[index_marker_handrim, 0]
+            # markers = self.markers()(q, self.parameters)
+            # marker_handrim_in_mwc_x = markers[index_marker_handrim, 0]
+            # wheelchair_to_shoulder_translation = model_eigen.localJCS()[index_arm].to_array()[1, -1]
+            # marker_handrim_in_mwc_y = markers[index_marker_handrim, 1] - r_wheel - wheelchair_to_shoulder_translation
+
+            # marker_handrim = self.marker(index=index_marker_handrim)(q, self.parameters)
+
+            q_biorbd = GeneralizedCoordinates(q)
+            marker_handrim = self.model.marker(q_biorbd, index_marker_handrim).to_mx()
+            marker_handrim_in_mwc_x = marker_handrim[0]
             wheelchair_to_shoulder_translation = model_eigen.localJCS()[index_arm].to_array()[1, -1]
-            marker_handrim_in_mwc_y = markers[index_marker_handrim, 1] - r_wheel - wheelchair_to_shoulder_translation
+            marker_handrim_in_mwc_y = marker_handrim[1] - r_wheel - wheelchair_to_shoulder_translation
 
             # # Find position dependent joint
             theta = self.inverse_kinematics_2d(
@@ -117,7 +126,7 @@ class CustomHolonomicBiorbdModel(HolonomicBiorbdModel):
     def compute_q(self) -> MX:
         q_v = self.compute_v_from_u_explicit_symbolic(self.q_u)
         biorbd_return = self.state_from_partition(self.q_u, q_v)
-        return Function("compute_q", [self.q_u, self.q_v], [biorbd_return], ["q_u", "q_v"], ["q"])
+        return Function("compute_q", [self.q_u, self.q_v_init], [biorbd_return], ["q_u", "q_v_init"], ["q"])
 
 
 class HolonomicTorqueWheelchairModel(CustomHolonomicBiorbdModel, HolonomicTorqueDynamics):

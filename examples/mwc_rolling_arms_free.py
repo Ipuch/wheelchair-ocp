@@ -8,7 +8,7 @@ import numpy as np
 
 from bioptim import (
     OptimalControlProgram,
-    DynamicsList,
+    DynamicsOptionsList,
     ObjectiveFcn,
     ObjectiveList,
     ConstraintList,
@@ -29,13 +29,15 @@ from wheelchair_utils import (
     holonomic_torque_driven_state_space_dynamics,
     compute_all_states_from_indep_qu,
 )
-from wheelchair_utils.custom_biorbd_model_holonomic import BiorbdModelCustomHolonomic
+
+from wheelchair_utils.custom_biorbd_model_holonomic_new import HolonomicTorqueWheelchairModel
 
 
 def prepare_ocp(
     biorbd_model_path: str,
     ode_solver: OdeSolverBase = OdeSolver.RK4(),
     n_shooting=50,
+    final_time=1.5,
 ) -> OptimalControlProgram:
     """
 
@@ -54,21 +56,21 @@ def prepare_ocp(
     The ocp ready to be solved
     """
 
-    # --- Options --- #
-    # BioModel path
-    bio_model = BiorbdModelCustomHolonomic(biorbd_model_path, "free")
     holonomic_constraints = HolonomicConstraintsList()
     holonomic_constraints.add(
         key="rolling_joint_constraint",
         constraints_fcn=generate_rolling_joint_constraint,
-        biorbd_model=bio_model,
         translation_joint_index=0,
         rotation_joint_index=1,
         radius=0.35,
     )
 
-    bio_model.set_holonomic_configuration(
-        constraints_list=holonomic_constraints, independent_joint_index=[1, 2, 3], dependent_joint_index=[0]
+    bio_model = HolonomicTorqueWheelchairModel(
+        biorbd_model_path,
+        holonomic_constraints=holonomic_constraints,
+        independent_joint_index=[1, 2, 3],
+        dependent_joint_index=[0],
+        mwc_phase="free",
     )
 
     final_time = 1.5
@@ -79,12 +81,10 @@ def prepare_ocp(
     objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=1.5, max_bound=3)
 
     # Dynamics
-    dynamics = DynamicsList()
+    dynamics = DynamicsOptionsList()
     dynamics.add(
-        configure_holonomic_torque_driven,
-        dynamic_function=holonomic_torque_driven_state_space_dynamics,
+        ode_solver=ode_solver,
         phase_dynamics=PhaseDynamics.SHARED_DURING_THE_PHASE,
-        # skip_continuity=True,
     )
 
     # Path Constraints
@@ -148,7 +148,6 @@ def prepare_ocp(
             u_bounds=u_bounds,
             objective_functions=objective_functions,
             constraints=constraints,
-            ode_solver=ode_solver,
             variable_mappings=variable_bimapping,
             use_sx=False,
             n_threads=8,
@@ -165,24 +164,32 @@ def main():
 
     model_path = "models/wheelchair_model.bioMod"
     n_shooting = 50
-    ocp, bio_model, variable_bimapping = prepare_ocp(biorbd_model_path=model_path, n_shooting=n_shooting)
+    ocp, bio_model, variable_bimapping = prepare_ocp(
+        biorbd_model_path=model_path, n_shooting=n_shooting, final_time=1.5
+    )
     # ocp.add_plot_penalty(CostType.CONSTRAINTS)
     # --- Solve the program --- #
 
     sol = ocp.solve(Solver.IPOPT(show_online_optim=False, show_options=dict(show_bounds=False), _max_iter=500))
+    sol.graphs()
     states = sol.decision_states(to_merge=SolutionMerge.NODES)
     controls = sol.decision_controls(to_merge=SolutionMerge.NODES)
 
     # # --- Show results --- #
     q, qdot, qddot, lambdas = compute_all_states_from_indep_qu(sol, bio_model, variable_bimapping)
     #
-    import bioviz
+    from pyorerun import PhaseRerun, BiorbdModel
 
-    q_cycle = np.hstack(q)
+    # building some time components
+    nb_seconds = 1
+    t_span = np.linspace(0, nb_seconds, n_shooting + 1)
 
-    viz = bioviz.Viz(model_path)
-    viz.load_movement(q_cycle)
-    viz.exec()
+    # loading biorbd model
+    biorbd_model = BiorbdModel(model_path)
+
+    rerun_biorbd = PhaseRerun(t_span)
+    rerun_biorbd.add_animated_model(biorbd_model, q[0])
+    rerun_biorbd.rerun("animation")
 
 
 if __name__ == "__main__":

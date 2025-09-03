@@ -115,11 +115,12 @@ def compute_all_states_from_indep_qu(sol, bio_model: BiorbdModelCustomHolonomic,
         # Partitioned forward dynamics
         q_u_sym = MX.sym("q_u_sym", bio_model.nb_independent_joints, 1)
         qdot_u_sym = MX.sym("qdot_u_sym", bio_model.nb_independent_joints, 1)
+        q_v_init = MX.sym("q_v_init", bio_model.nb_dependent_joints, 1)
         tau_sym = MX.sym("tau_sym", bio_model.nb_tau, 1)
         partitioned_forward_dynamics_func = Function(
             "partitioned_forward_dynamics",
-            [q_u_sym, qdot_u_sym, tau_sym],
-            [bio_model.partitioned_forward_dynamics(q_u_sym, qdot_u_sym, tau_sym)],
+            [q_u_sym, qdot_u_sym, q_v_init, tau_sym],
+            [bio_model.partitioned_forward_dynamics()(q_u_sym, qdot_u_sym, q_v_init, tau_sym)],
         )
         # Lagrangian multipliers
         q_sym = MX.sym("q_sym", bio_model.nb_q, 1)
@@ -128,7 +129,7 @@ def compute_all_states_from_indep_qu(sol, bio_model: BiorbdModelCustomHolonomic,
         compute_lambdas_func = Function(
             "compute_the_lagrangian_multipliers",
             [q_sym, qdot_sym, qddot_sym, tau_sym],
-            [bio_model._compute_the_lagrangian_multipliers(q_sym, qdot_sym, qddot_sym, tau_sym)],
+            [bio_model._compute_the_lagrangian_multipliers()(q_sym, qdot_sym, qddot_sym, tau_sym)],
         )
 
         for i in range(n):
@@ -138,11 +139,11 @@ def compute_all_states_from_indep_qu(sol, bio_model: BiorbdModelCustomHolonomic,
             q[:, i] = (
                 bio_model.state_from_partition(states["q_u"][:, i][:, np.newaxis], q_v_i).toarray().squeeze()
             )  # TODO : add error si mauvaises dimensions
-            qdot[:, i] = bio_model.compute_qdot(q[:, i], states["qdot_u"][:, i]).toarray().squeeze()
+            qdot[:, i] = bio_model.compute_qdot()(q[:, i], states["qdot_u"][:, i]).toarray().squeeze()
             qddot_u_i = partitioned_forward_dynamics_func(
-                states["q_u"][:, i], states["qdot_u"][:, i], tau[:, i]
+                states["q_u"][:, i], states["qdot_u"][:, i], np.zeros((bio_model.nb_dependent_joints, 1)), tau[:, i]
             ).toarray()
-            qddot[:, i] = bio_model.compute_qddot(q[:, i], qdot[:, i], qddot_u_i).toarray().squeeze()
+            qddot[:, i] = bio_model.compute_qddot()(q[:, i], qdot[:, i], qddot_u_i).toarray().squeeze()
             lambdas[:, i] = compute_lambdas_func(q[:, i], qdot[:, i], qddot[:, i], tau[:, i]).toarray().squeeze()
 
         q_cycle.append(q)
@@ -156,6 +157,7 @@ def compute_all_states_from_indep_qu(sol, bio_model: BiorbdModelCustomHolonomic,
             n = states[i_phase]["q_u"].shape[1]
 
             q = np.zeros((bio_model[i_phase].nb_q, n))  # très sale
+            q_v_init = MX.sym("q_v_init", bio_model[i_phase].nb_dependent_joints, 1)
             qdot = np.zeros((bio_model[i_phase].nb_q, n))
             qddot = np.zeros((bio_model[i_phase].nb_q, n))
             lambdas = np.zeros((bio_model[i_phase].nb_dependent_joints, n))
@@ -170,8 +172,8 @@ def compute_all_states_from_indep_qu(sol, bio_model: BiorbdModelCustomHolonomic,
             tau_sym = MX.sym("tau_sym", bio_model[i_phase].nb_tau, 1)
             partitioned_forward_dynamics_func = Function(
                 "partitioned_forward_dynamics",
-                [q_u_sym, qdot_u_sym, tau_sym],
-                [bio_model[i_phase].partitioned_forward_dynamics(q_u_sym, qdot_u_sym, tau_sym)],
+                [q_u_sym, qdot_u_sym, q_v_init, tau_sym],
+                [bio_model[i_phase].partitioned_forward_dynamics()(q_u_sym, qdot_u_sym, q_v_init, tau_sym)],
             )
             # Lagrangian multipliers
             q_sym = MX.sym("q_sym", bio_model[i_phase].nb_q, 1)
@@ -180,26 +182,30 @@ def compute_all_states_from_indep_qu(sol, bio_model: BiorbdModelCustomHolonomic,
             compute_lambdas_func = Function(
                 "compute_the_lagrangian_multipliers",
                 [q_sym, qdot_sym, qddot_sym, tau_sym],
-                [bio_model[i_phase]._compute_the_lagrangian_multipliers(q_sym, qdot_sym, qddot_sym, tau_sym)],
+                [bio_model[i_phase]._compute_the_lagrangian_multipliers()(q_sym, qdot_sym, qddot_sym, tau_sym)],
             )
 
+            states_i = states[i_phase]
+            tau_i = controls[i_phase]["tau"]
+
             for i in range(n):
-                q_v_i = bio_model[i_phase].compute_v_from_u_explicit_symbolic(states[i_phase]["q_u"][:, i])
+                q_v_i = bio_model[i_phase].compute_v_from_u_explicit_symbolic(states_i["q_u"][:, i])
                 q_v_i_function = Function("q_v_i_eval", [], [q_v_i])
                 q_v_i = q_v_i_function()["o0"]
                 q[:, i] = (
                     bio_model[i_phase]
-                    .state_from_partition(states[i_phase]["q_u"][:, i][:, np.newaxis], q_v_i)
+                    .state_from_partition(states_i[i_phase]["q_u"][:, i][:, np.newaxis], q_v_i)
                     .toarray()
                     .squeeze()
                 )  # TODO : add error si mauvaises dimensions
-                qdot[:, i] = (
-                    bio_model[i_phase].compute_qdot(q[:, i], states[i_phase]["qdot_u"][:, i]).toarray().squeeze()
-                )
+                qdot[:, i] = bio_model[i_phase].compute_qdot()(q[:, i], states_i["qdot_u"][:, i]).toarray().squeeze()
                 qddot_u_i = partitioned_forward_dynamics_func(
-                    states[i_phase]["q_u"][:, i], states[i_phase]["qdot_u"][:, i], tau[:, i]
+                    states_i["q_u"][:, i],
+                    states_i["qdot_u"][:, i],
+                    np.zeros((bio_model.nb_dependent_joints, 1)),
+                    tau_i[:, i],
                 ).toarray()
-                qddot[:, i] = bio_model[i_phase].compute_qddot(q[:, i], qdot[:, i], qddot_u_i).toarray().squeeze()
+                qddot[:, i] = bio_model[i_phase].compute_qddot()(q[:, i], qdot[:, i], qddot_u_i).toarray().squeeze()
                 lambdas[:, i] = compute_lambdas_func(q[:, i], qdot[:, i], qddot[:, i], tau[:, i]).toarray().squeeze()
 
             q_cycle.append(q)

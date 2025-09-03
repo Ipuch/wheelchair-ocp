@@ -1,24 +1,20 @@
-"""
-This file is to display the human model into bioviz
-"""
+import numpy as np
+from pyorerun import PhaseRerun, BiorbdModel
 
-import bioviz
+biorbd_model_path = "models/wheelchair_model.bioMod"
 
-model_name = "models/wheelchair_model.bioMod"
+# building some time components
+nb_frames = 200
+nb_seconds = 1
+t_span = np.linspace(0, nb_seconds, nb_frames)
 
-biorbd_viz = bioviz.Viz(
-    model_name,
-    show_gravity_vector=False,
-    show_floor=False,
-    show_local_ref_frame=True,
-    show_global_ref_frame=True,
-    show_markers=True,
-    show_mass_center=False,
-    show_global_center_of_mass=False,
-    show_segments_center_of_mass=True,
-    mesh_opacity=0.5,
-    background_color=(0.5, 0.5, 0.5),
-)
+# loading biorbd model
+biorbd_model = BiorbdModel(biorbd_model_path)
+nq = biorbd_model.model.nbQ()
 
-biorbd_viz.exec()
-print("Done")
+# running the animation
+rerun_biorbd = PhaseRerun(t_span)
+np.random.seed(42)
+q = np.linspace(np.array([0, 0, 0, -1]), np.array([0.35 * 2, -2, 1, 1.5]), nb_frames).T
+rerun_biorbd.add_animated_model(biorbd_model, q)
+rerun_biorbd.rerun("animation")

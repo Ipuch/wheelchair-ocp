@@ -9,7 +9,7 @@ import numpy as np
 
 from bioptim import (
     OptimalControlProgram,
-    DynamicsList,
+    DynamicsOptionsList,
     ObjectiveFcn,
     ObjectiveList,
     ConstraintList,
@@ -24,11 +24,10 @@ from bioptim import (
     HolonomicConstraintsList,
     InterpolationType,
     PhaseTransitionList,
-    DynamicsFcn,
 )
 from wheelchair_utils import compute_all_states_from_indep_qu
-from wheelchair_utils.custom_biorbd_model_holonomic import BiorbdModelCustomHolonomic
-# from wheelchair_utils.dynamics import holonomic_torque_driven_state_space_dynamics, configure_holonomic_torque_driven
+from wheelchair_utils.custom_biorbd_model_holonomic_new import HolonomicTorqueWheelchairModel
+
 from wheelchair_utils.holonomic_constraints import generate_close_loop_constraint, generate_rolling_joint_constraint
 from wheelchair_utils.phase_transitions import custom_phase_transition_post
 
@@ -54,29 +53,17 @@ def prepare_ocp(
     -------
     The ocp ready to be solved
     """
-
-    # --- Options --- #
-    # BioModel path
-    bio_model = (
-        BiorbdModelCustomHolonomic(biorbd_model_path, "push_phase"),
-        BiorbdModelCustomHolonomic(biorbd_model_path, "recovery_phase"),  # remettre le marqueur au bon endroit
-    )
-
-    # Constraints
     holonomic_constraints_push = HolonomicConstraintsList()
     holonomic_constraints_push.add(
         key="rolling_joint_constraint",
         constraints_fcn=generate_rolling_joint_constraint,
-        biorbd_model=bio_model[0],
         translation_joint_index=0,
         rotation_joint_index=1,
         radius=0.35,
     )
-
     holonomic_constraints_push.add(
         key="holonomic_constraint",
         constraints_fcn=generate_close_loop_constraint,
-        biorbd_model=bio_model[0],
         marker_1="handrim_contact_point",
         marker_2="hand",
         index=slice(0, 2),
@@ -87,18 +74,26 @@ def prepare_ocp(
     holonomic_constraints_recovery.add(
         key="rolling_joint_constraint",
         constraints_fcn=generate_rolling_joint_constraint,
-        biorbd_model=bio_model[1],
         translation_joint_index=0,
         rotation_joint_index=1,
         radius=0.35,
     )
 
-    bio_model[0].set_holonomic_configuration(
-        constraints_list=holonomic_constraints_push, independent_joint_index=[1], dependent_joint_index=[0, 2, 3]
-    )
-
-    bio_model[1].set_holonomic_configuration(
-        constraints_list=holonomic_constraints_recovery, independent_joint_index=[1, 2, 3], dependent_joint_index=[0]
+    bio_model = (
+        HolonomicTorqueWheelchairModel(
+            biorbd_model_path,
+            mwc_phase="push_phase",
+            holonomic_constraints=holonomic_constraints_push,
+            independent_joint_index=[1],  # wheel angle
+            dependent_joint_index=[0, 2, 3],  # x translation + arm
+        ),
+        HolonomicTorqueWheelchairModel(
+            biorbd_model_path,
+            mwc_phase="recovery_phase",
+            holonomic_constraints=holonomic_constraints_recovery,
+            independent_joint_index=[1, 2, 3],  # wheel angle + arm
+            dependent_joint_index=[0],  # x translation (rolling constraint
+        ),  # remettre le marqueur au bon endroit
     )
 
     # Objective functions
@@ -111,15 +106,15 @@ def prepare_ocp(
     objective_functions.add(ObjectiveFcn.Mayer.MINIMIZE_TIME, weight=1, min_bound=2, max_bound=5, phase=1)
 
     # Dynamics
-    dynamics = DynamicsList()
+    dynamics = DynamicsOptionsList()
     dynamics.add(
-        DynamicsFcn.HOLONOMIC_TORQUE_DRIVEN,
         phase_dynamics=PhaseDynamics.SHARED_DURING_THE_PHASE,
+        ode_solver=ode_solver,
         phase=0,
     )
     dynamics.add(
-        DynamicsFcn.HOLONOMIC_TORQUE_DRIVEN,
         phase_dynamics=PhaseDynamics.SHARED_DURING_THE_PHASE,
+        ode_solver=ode_solver,
         phase=1,
     )
 
@@ -191,7 +186,7 @@ def prepare_ocp(
     u_init.add("tau", initial_guess=[tau_init] * 2, phase=1)
 
     phase_transition = PhaseTransitionList()
-    phase_transition.add(custom_phase_transition_post, phase_pre_idx=0)
+    # phase_transition.add(custom_phase_transition_post, phase_pre_idx=0)
     # ------------- #
 
     return (
@@ -206,7 +201,6 @@ def prepare_ocp(
             u_bounds=u_bounds,
             objective_functions=objective_functions,
             constraints=constraints,
-            ode_solver=ode_solver,
             variable_mappings=variable_bimapping_ocp,
             phase_transitions=phase_transition,
             use_sx=False,
@@ -228,7 +222,7 @@ def main():
     # ocp.add_plot_penalty(CostType.CONSTRAINTS)
     # --- Solve the program --- #
 
-    sol = ocp.solve(Solver.IPOPT(show_online_optim=True, show_options=dict(show_bounds=False), _max_iter=500))
+    sol = ocp.solve(Solver.IPOPT(show_online_optim=False, show_options=dict(show_bounds=False), _max_iter=500))
     states = sol.decision_states(to_merge=SolutionMerge.NODES)
     controls = sol.decision_controls(to_merge=SolutionMerge.NODES)
 
@@ -237,11 +231,23 @@ def main():
     #
     q_cycle = np.hstack(q)
 
-    import bioviz
+    from pyorerun import MultiPhaseRerun, BiorbdModel
 
-    viz = bioviz.Viz(model_path)
-    viz.load_movement(q_cycle)
-    viz.exec()
+    # building some time components
+    nb_seconds = 1
+    t_span_0 = np.linspace(0, nb_seconds, n_shooting[0] + 1)
+    t_span_1 = np.linspace(0, nb_seconds, n_shooting[1] + 1)
+
+    # loading biorbd model
+    biorbd_model = BiorbdModel(model_path)
+
+    multi_phase_rerun = MultiPhaseRerun()
+    multi_phase_rerun.add_phase(t_span_0)
+    multi_phase_rerun.add_phase(t_span_1)
+    multi_phase_rerun.add_animated_model(biorbd_model, q[0], phase=0)
+    multi_phase_rerun.add_animated_model(biorbd_model, q[1], phase=1)
+
+    multi_phase_rerun.rerun("push_recovery")
 
     # import matplotlib.pyplot as plt
     #

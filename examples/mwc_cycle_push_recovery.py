@@ -234,11 +234,8 @@ def main():
     # --- Solve the program --- #
     sol = ocp.solve(
         Solver.IPOPT(
-            # show_online_optim=OnlineOptim.SERVER,
-            # show_online_optim=OnlineOptim.MULTIPROCESS_SERVER,
-            # show_online_optim=OnlineOptim.DEFAULT,
             show_options=dict(show_bounds=True),
-            _max_iter=200,
+            _max_iter=100,
         ),
     )
     states = sol.decision_states(to_merge=SolutionMerge.NODES)
@@ -246,13 +243,8 @@ def main():
 
     # # --- Show results --- #
     q, qdot, qddot, lambdas = compute_all_states_from_indep_qu(sol, bio_model, variable_bimapping)
-    q_cycle = np.hstack(q)
 
     from pyorerun import MultiPhaseRerun, BiorbdModel
-
-    # building some time components
-    t_span_0 = np.linspace(0, final_time[0], n_shooting[0] + 1)
-    t_span_1 = np.linspace(final_time[0], final_time[0] + final_time[1], n_shooting[1] + 1)
 
     # loading biorbd model
     biorbd_model = BiorbdModel(model_path)

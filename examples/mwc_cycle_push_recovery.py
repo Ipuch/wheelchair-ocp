@@ -27,7 +27,7 @@ from bioptim import (
     CostType,
 )
 
-from external.bioptim import OnlineOptim
+from bioptim import OnlineOptim
 from wheelchair_utils import compute_all_states_from_indep_qu
 from wheelchair_utils.custom_biorbd_model_holonomic_new import HolonomicTorqueWheelchairModel
 
